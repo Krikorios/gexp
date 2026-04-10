@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% block title %}مراجعة الوثيقة #{{ doc.id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/review.css">
+{% endblock %}
+
+{% block content %}
+<div class="review-header">
+  <div class="review-title">
+    <h2>مراجعة الوثيقة #{{ doc.id }}</h2>
+    <span class="status-badge status-{{ doc.status }}">{{ doc.status }}</span>
+  </div>
+  <div class="review-nav">
+    <a href="/documents" class="btn btn-secondary btn-sm">← قائمة الوثائق</a>
+    <a href="/review/next" class="btn btn-secondary btn-sm">التالية ←</a>
+    <button class="btn btn-danger btn-sm" onclick="deleteDoc({{ doc.id }})">🗑 حذف الوثيقة</button>
+  </div>
+</div>
+
+{% if doc.status == 'error' %}
+<div class="error-banner">
+  ⚠ خطأ في الاستخراج: {{ doc.extraction_error }}
+  <button class="btn btn-sm btn-warning" onclick="retriggerExtraction({{ doc.id }})">إعادة المحاولة</button>
+</div>
+{% endif %}
+
+<div class="review-layout">
+  <!-- Image Panel -->
+  <div class="image-panel">
+    <div class="image-toolbar">
+      <button onclick="zoomIn()" class="btn btn-sm">🔍+</button>
+      <button onclick="zoomOut()" class="btn btn-sm">🔍-</button>
+      <button onclick="resetZoom()" class="btn btn-sm">↺</button>
+    </div>
+    <div class="image-container" id="imageContainer">
+      <img id="docImage" src="/uploads/{{ doc.image_path }}" alt="وثيقة" class="doc-image">
+    </div>
+  </div>
+
+  <!-- Form Panel -->
+  <div class="form-panel">
+    <form id="reviewForm">
+
+      <!-- Person Info -->
+      <section class="form-section">
+        <h3>بيانات الشخص</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>الاسم *</label>
+            <input type="text" name="first_name" value="{{ doc.person.get('first_name') or '' }}" required>
+          </div>
+          <div class="form-group">
+            <label>اسم الأب</label>
+            <input type="text" name="father_name" value="{{ doc.person.get('father_name') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>اسم الأم</label>
+            <input type="text" name="mother_name" value="{{ doc.person.get('mother_name') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>اللقب</label>
+            <input type="text" name="family_name" value="{{ doc.person.get('family_name') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>الهوا / المنشأ</label>
+            <input type="text" name="family_origin" value="{{ doc.person.get('family_origin') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>الجنسية</label>
+            <input type="text" name="nationality" value="{{ doc.person.get('nationality') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>تاريخ الولادة</label>
+            <input type="text" name="birth_date" value="{{ doc.person.get('birth_date') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>رقم السجل</label>
+            <input type="text" name="registry_number" value="{{ doc.person.get('registry_number') or '' }}">
+          </div>
+          <div class="form-group">
+            <label>مكان السجل</label>
+            <input type="text" name="registry_place" value="{{ doc.person.get('registry_place') or '' }}">
+          </div>
+        </div>
+
+        <!-- Merge suggestion (populated by JS) -->
+        <div id="mergeSuggestion" class="merge-banner hidden">
+          <h4>شخص مشابه موجود في قاعدة البيانات:</h4>
+          <div id="mergeMatches"></div>
+          <div class="merge-actions">
+            <label><input type="radio" name="merge_action" value="merge" checked> دمج مع الشخص الموجود</label>
+            <label><input type="radio" name="merge_action" value="new"> إنشاء شخص جديد</label>
+          </div>
+          <input type="hidden" id="mergePersonId" value="">
+        </div>
+      </section>
+
+      <!-- Document Info -->
+      <section class="form-section">
+        <h3>بيانات الطلب</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>رقم الطلب</label>
+            <input type="text" name="request_number" value="{{ doc.request_number or '' }}">
+          </div>
+          <div class="form-group">
+            <label>تاريخ الطلب</label>
+            <input type="text" name="request_date" value="{{ doc.request_date or '' }}">
+          </div>
+          <div class="form-group">
+            <label>معلومات الصفحة</label>
+            <input type="text" name="page_info" value="{{ doc.page_info or '' }}" placeholder="مثال: 1 من 3">
+          </div>
+          <div class="form-group">
+            <label>نطاق البحث (القضاء)</label>
+            <input type="text" name="search_scope" value="{{ doc.search_scope or '' }}" placeholder="مثال: المتن">
+          </div>
+        </div>
+      </section>
+
+      <!-- Properties Table -->
+      <section class="form-section">
+        <div class="section-header">
+          <h3>العقارات المملوكة</h3>
+          <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+ إضافة صف</button>
+        </div>
+        <div class="table-wrapper">
+          <table id="propertiesTable" class="props-table">
+            <thead>
+              <tr>
+                <th>اسم الفريق</th>
+                <th>رقم العقار</th>
+                <th>القسم</th>
+                <th>البلوك</th>
+                <th>المنطقة العقارية</th>
+                <th>القضاء</th>
+                <th>عدد الأسهم</th>
+                <th>نوع الملكية</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="propertiesTbody">
+              {% for prop in doc.properties %}
+              <tr>
+                <td><input type="text" value="{{ prop.party_name or '' }}"></td>
+                <td><input type="text" value="{{ prop.property_number or '' }}"></td>
+                <td><input type="text" value="{{ prop.section or '' }}"></td>
+                <td><input type="text" value="{{ prop.block or '' }}"></td>
+                <td><input type="text" value="{{ prop.real_estate_district or '' }}"></td>
+                <td><input type="text" value="{{ prop.qaza or '' }}"></td>
+                <td><input type="text" value="{{ prop.num_shares or '' }}"></td>
+                <td><input type="text" value="{{ prop.ownership_type or '' }}"></td>
+                <td><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Actions -->
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary btn-large" onclick="confirmDocument()" id="confirmBtn">
+          ✓ تأكيد والانتقال للتالية
+        </button>
+        <span class="keyboard-hint">أو اضغط Ctrl+Enter</span>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/review.js"></script>
+<script>
+const DOC_ID = {{ doc.id }};
+
+function addRow() {
+  const tbody = document.getElementById('propertiesTbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><input type="text" value=""></td>
+    <td><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+  tr.querySelector('input').focus();
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+}
+
+function getFormData() {
+  const form = document.getElementById('reviewForm');
+  const person = {
+    first_name: form.querySelector('[name=first_name]').value,
+    father_name: form.querySelector('[name=father_name]').value,
+    mother_name: form.querySelector('[name=mother_name]').value,
+    family_name: form.querySelector('[name=family_name]').value,
+    family_origin: form.querySelector('[name=family_origin]').value,
+    nationality: form.querySelector('[name=nationality]').value,
+    birth_date: form.querySelector('[name=birth_date]').value,
+    registry_number: form.querySelector('[name=registry_number]').value,
+    registry_place: form.querySelector('[name=registry_place]').value,
+  };
+  const rows = document.querySelectorAll('#propertiesTbody tr');
+  const properties = Array.from(rows).map(row => {
+    const inputs = row.querySelectorAll('input');
+    return {
+      party_name: inputs[0].value,
+      property_number: inputs[1].value,
+      section: inputs[2].value,
+      block: inputs[3].value,
+      real_estate_district: inputs[4].value,
+      qaza: inputs[5].value,
+      num_shares: inputs[6].value,
+      ownership_type: inputs[7].value,
+    };
+  });
+  
+  const reqNum = form.querySelector('[name=request_number]').value;
+  const reqDate = form.querySelector('[name=request_date]').value;
+  const pageInfo = form.querySelector('[name=page_info]').value;
+  const searchScope = form.querySelector('[name=search_scope]').value;
+  
+  return { 
+    person, 
+    properties,
+    request_number: reqNum,
+    request_date: reqDate,
+    page_info: pageInfo,
+    search_scope: searchScope
+  };
+}
+
+// ─── Duplicate person check ────────────────────────────
+let _dupTimer = null;
+
+function checkDuplicate() {
+  clearTimeout(_dupTimer);
+  _dupTimer = setTimeout(async () => {
+    const form = document.getElementById('reviewForm');
+    const first = form.querySelector('[name=first_name]').value.trim();
+    const father = form.querySelector('[name=father_name]').value.trim();
+    const family = form.querySelector('[name=family_name]').value.trim();
+    if (!first) return;
+
+    const params = new URLSearchParams({first_name: first, father_name: father, family_name: family});
+    const res = await fetch('/api/check-duplicate?' + params);
+    const data = await res.json();
+
+    const banner = document.getElementById('mergeSuggestion');
+    const matchesDiv = document.getElementById('mergeMatches');
+    const mergeIdInput = document.getElementById('mergePersonId');
+
+    if (data.matches && data.matches.length > 0) {
+      matchesDiv.innerHTML = data.matches.map(m =>
+        `<div class="merge-person" data-person-id="${m.id}">
+          <span class="mp-name">${m.first_name} ${m.father_name||''} ${m.family_name||''}</span>
+          <span class="mp-count">${m.property_count} عقار</span>
+          ${m.family_origin ? '<span class="mp-count">'+m.family_origin+'</span>' : ''}
+        </div>`
+      ).join('');
+      mergeIdInput.value = data.matches[0].id;
+      banner.classList.remove('hidden');
+
+      // Click to select a match
+      matchesDiv.querySelectorAll('.merge-person').forEach(el => {
+        el.addEventListener('click', () => {
+          matchesDiv.querySelectorAll('.merge-person').forEach(e => e.style.outline = '');
+          el.style.outline = '2px solid var(--primary)';
+          mergeIdInput.value = el.dataset.personId;
+          form.querySelector('[name=merge_action][value=merge]').checked = true;
+        });
+      });
+    } else {
+      banner.classList.add('hidden');
+      mergeIdInput.value = '';
+    }
+  }, 500);
+}
+
+// Attach duplicate check to name fields
+document.querySelectorAll('[name=first_name],[name=father_name],[name=family_name]').forEach(input => {
+  input.addEventListener('blur', checkDuplicate);
+});
+// Run once on load
+checkDuplicate();
+
+// ─── Confirm ───────────────────────────────────────────
+async function confirmDocument() {
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ جارٍ الحفظ...';
+
+  try {
+    const formData = getFormData();
+
+    // Check if user chose to merge
+    const mergeAction = document.querySelector('[name=merge_action]:checked');
+    const mergeId = document.getElementById('mergePersonId').value;
+    if (mergeAction && mergeAction.value === 'merge' && mergeId) {
+      formData.merge_person_id = parseInt(mergeId);
+    }
+
+    const res = await fetch(`/confirm/${DOC_ID}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = data.next;
+    } else {
+      alert('حدث خطأ: ' + JSON.stringify(data));
+      btn.disabled = false;
+      btn.textContent = '✓ تأكيد والانتقال للتالية';
+    }
+  } catch (e) {
+    alert('خطأ في الشبكة: ' + e);
+    btn.disabled = false;
+    btn.textContent = '✓ تأكيد والانتقال للتالية';
+  }
+}
+
+async function retriggerExtraction(docId) {
+  if (!confirm('إعادة استخراج البيانات بالذكاء الاصطناعي؟')) return;
+  await fetch(`/extract/${docId}`, { method: 'POST' });
+  location.reload();
+}
+
+async function deleteDoc(docId) {
+  if (!confirm('حذف هذه الوثيقة نهائياً؟ لا يمكن التراجع.')) return;
+  const res = await fetch(`/documents/${docId}`, { method: 'DELETE' });
+  if (res.ok) {
+    window.location.href = '/review/next';
+  } else {
+    alert('حدث خطأ أثناء الحذف.');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    confirmDocument();
+  }
+});
+</script>
+{% endblock %}

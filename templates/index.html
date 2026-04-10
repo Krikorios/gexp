@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}رفع وثائق — سجل العقارات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>بطاقات معلومات الملكية العقارية</h1>
+  <p class="subtitle">ارفع صور أو ملفات PDF للوثائق — اختر محرك الاستخراج (مجاني أو ذكاء اصطناعي)</p>
+</div>
+
+{% if stats and stats.total %}
+<div class="stats-bar">
+  <div class="stat"><span class="stat-num">{{ stats.total }}</span><span class="stat-label">إجمالي الوثائق</span></div>
+  <div class="stat confirmed"><span class="stat-num">{{ stats.confirmed or 0 }}</span><span class="stat-label">مؤكّدة</span></div>
+  <div class="stat pending"><span class="stat-num">{{ stats.pending_review or 0 }}</span><span class="stat-label">بانتظار المراجعة</span></div>
+  {% if stats.errors %}<div class="stat error"><span class="stat-num">{{ stats.errors }}</span><span class="stat-label">أخطاء</span></div>{% endif %}
+</div>
+{% if stats.pending_review %}
+<div class="alert-banner">
+  <a href="/review/next">▶ ابدأ مراجعة {{ stats.pending_review }} وثيقة</a>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="upload-card">
+  <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-icon">📄</div>
+      <p class="drop-text">اسحب الملفات هنا أو انقر للاختيار</p>
+      <p class="drop-hint">JPG، PNG، PDF — يمكن رفع عدة ملفات دفعة واحدة</p>
+      <input type="file" name="files" id="fileInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
+    </div>
+
+    <div id="fileList" class="file-list hidden"></div>
+
+    <!-- Provider selector -->
+    <div id="providerSection" class="provider-section hidden">
+      <label class="provider-label">محرك الاستخراج:</label>
+      <div class="provider-options">
+        {% for p in providers %}
+        <label class="provider-option">
+          <input type="radio" name="provider" value="{{ p.id }}"
+                 {{ 'checked' if p.id == default_provider else '' }}>
+          <span class="provider-card {{ 'provider-free' if p.id == 'easyocr' else 'provider-ai' }}">
+            <span class="provider-name">{{ p.name }}</span>
+            <span class="provider-model">{{ p.model }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="uploadActions" class="upload-actions hidden">
+      <button type="submit" class="btn btn-primary btn-large">
+        ⬆ رفع ومعالجة
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="clearFiles()">إلغاء</button>
+    </div>
+  </form>
+</div>
+
+<div class="quick-links">
+  <a href="/search" class="quick-link-card">
+    <span class="ql-icon">🔍</span>
+    <span>البحث في قاعدة البيانات</span>
+  </a>
+  <a href="/documents" class="quick-link-card">
+    <span class="ql-icon">📋</span>
+    <span>قائمة جميع الوثائق</span>
+  </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+const uploadActions = document.getElementById('uploadActions');
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  fileInput.files = e.dataTransfer.files;
+  showFiles(fileInput.files);
+});
+
+fileInput.addEventListener('change', () => showFiles(fileInput.files));
+
+function showFiles(files) {
+  if (!files.length) return;
+  fileList.innerHTML = Array.from(files).map(f =>
+    `<div class="file-item">${f.name.endsWith('.pdf')?'📕':'📄'} ${f.name} <span class="file-size">${(f.size/1024).toFixed(0)} KB</span></div>`
+  ).join('');
+  fileList.classList.remove('hidden');
+  document.getElementById('providerSection').classList.remove('hidden');
+  uploadActions.classList.remove('hidden');
+}
+
+function clearFiles() {
+  fileInput.value = '';
+  fileList.innerHTML = '';
+  fileList.classList.add('hidden');
+  document.getElementById('providerSection').classList.add('hidden');
+  uploadActions.classList.add('hidden');
+}
+
+document.getElementById('uploadForm').addEventListener('submit', function() {
+  document.querySelector('.btn-primary').textContent = '⏳ جارٍ الرفع...';
+  document.querySelector('.btn-primary').disabled = true;
+});
+</script>
+{% endblock %}

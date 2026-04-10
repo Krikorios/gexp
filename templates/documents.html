@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}قائمة الوثائق — سجل العقارات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>قائمة الوثائق</h1>
+  <a href="/" class="btn btn-primary">+ رفع وثائق جديدة</a>
+</div>
+
+{% if uploaded %}
+<div class="success-banner">تم رفع الملفات بنجاح وبدأ الاستخراج. قد يستغرق بعض الوقت.</div>
+{% endif %}
+
+<div class="stats-bar">
+  <a href="/documents" class="stat {{ 'active' if not current_status }}">
+    <span class="stat-num">{{ stats.total or 0 }}</span><span class="stat-label">الكل</span>
+  </a>
+  <a href="/documents?status=extracted" class="stat pending {{ 'active' if current_status=='extracted' }}">
+    <span class="stat-num">{{ stats.pending_review or 0 }}</span><span class="stat-label">بانتظار المراجعة</span>
+  </a>
+  <a href="/documents?status=confirmed" class="stat confirmed {{ 'active' if current_status=='confirmed' }}">
+    <span class="stat-num">{{ stats.confirmed or 0 }}</span><span class="stat-label">مؤكّدة</span>
+  </a>
+  <a href="/documents?status=pending" class="stat {{ 'active' if current_status=='pending' }}">
+    <span class="stat-num">{{ stats.processing or 0 }}</span><span class="stat-label">جارٍ المعالجة</span>
+  </a>
+  {% if stats.errors %}
+  <a href="/documents?status=error" class="stat error {{ 'active' if current_status=='error' }}">
+    <span class="stat-num">{{ stats.errors }}</span><span class="stat-label">أخطاء</span>
+  </a>
+  {% endif %}
+</div>
+
+{% if stats.pending_review %}
+<div class="alert-banner">
+  <a href="/review/next">▶ ابدأ مراجعة {{ stats.pending_review }} وثيقة</a>
+</div>
+{% endif %}
+
+<div class="table-wrapper">
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>الصورة</th>
+        <th>الشخص</th>
+        <th>رقم الطلب</th>
+        <th>الحالة</th>
+        <th>التاريخ</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in documents %}
+      <tr>
+        <td>{{ d.id }}</td>
+        <td>
+          <a href="/review/{{ d.id }}">
+            <img src="/uploads/{{ d.image_path }}" class="doc-thumb-mini" alt="">
+          </a>
+        </td>
+        <td>
+          {% if d.person_id %}
+          <a href="/persons/{{ d.person_id }}">{{ d.first_name or '' }} {{ d.family_name or '' }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ d.request_number or '—' }}</td>
+        <td><span class="status-badge status-{{ d.status }}">{{ d.status }}</span></td>
+        <td>{{ d.created_at[:10] if d.created_at else '' }}</td>
+        <td class="doc-actions">
+          <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">
+            {% if d.status == 'confirmed' %}عرض{% else %}مراجعة{% endif %}
+          </a>
+          <button class="btn btn-sm btn-danger" onclick="deleteDoc({{ d.id }}, this)">حذف</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if not documents %}
+<div class="no-results">
+  <p>لا توجد وثائق. <a href="/">ارفع وثائق جديدة</a></p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function deleteDoc(docId, btn) {
+  if (!confirm('حذف هذه الوثيقة نهائياً؟ لا يمكن التراجع.')) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  const res = await fetch(`/documents/${docId}`, { method: 'DELETE' });
+  if (res.ok) {
+    btn.closest('tr').remove();
+  } else {
+    alert('حدث خطأ أثناء الحذف.');
+    btn.disabled = false;
+    btn.textContent = 'حذف';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+/* Review page — two-column sticky layout */
+.review-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* Image panel */
+.image-panel {
+  position: sticky;
+  top: 70px;
+  background: #1f2937;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+.image-toolbar {
+  display: flex;
+  gap: .4rem;
+  padding: .5rem .75rem;
+  background: #111827;
+}
+.image-container {
+  overflow: auto;
+  max-height: calc(100vh - 140px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: .5rem;
+}
+.doc-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  transform-origin: top center;
+  transition: transform .2s;
+  border-radius: 4px;
+}
+
+/* Form panel */
+.form-panel {
+  min-width: 0;
+}

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}بحث — سجل العقارات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>البحث في قاعدة البيانات</h1>
+</div>
+
+<div class="search-card">
+  <form method="get" action="/search" id="searchForm">
+    <div class="search-tabs">
+      <button type="button" class="tab-btn active" onclick="showTab('person')">بحث بالاسم</button>
+      <button type="button" class="tab-btn" onclick="showTab('property')">بحث بالعقار</button>
+    </div>
+
+    <div id="tab-person" class="tab-content">
+      <div class="search-row">
+        <input type="text" name="q" id="qInput" value="{{ q }}"
+               placeholder="اكتب اسم الشخص..." class="search-input" autocomplete="off">
+        <button type="submit" class="btn btn-primary">🔍 بحث</button>
+      </div>
+    </div>
+
+    <div id="tab-property" class="tab-content hidden">
+      <div class="search-grid">
+        <div class="form-group">
+          <label>رقم العقار</label>
+          <input type="text" name="property_number" value="{{ property_number }}" placeholder="مثال: 162">
+        </div>
+        <div class="form-group">
+          <label>المنطقة العقارية</label>
+          <input type="text" name="district" value="{{ district }}" placeholder="مثال: مراح الزيتات">
+        </div>
+        <div class="form-group">
+          <label>البلوك</label>
+          <input type="text" name="block" value="{{ block }}" placeholder="رقم البلوك">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">🔍 بحث</button>
+    </div>
+  </form>
+</div>
+
+{% if error %}
+<div class="error-banner">{{ error }}</div>
+{% endif %}
+
+<!-- Person results -->
+{% if persons %}
+<div class="results-section">
+  <h2>نتائج البحث بالاسم ({{ persons|length }} شخص)</h2>
+
+  {% if selected_person %}
+    <!-- Single person: show full details inline -->
+    <div class="person-info-card">
+      <div class="info-grid">
+        <div class="info-item"><span class="info-label">الاسم الكامل</span><span>{{ selected_person.person.first_name }} {{ selected_person.person.father_name or '' }} {{ selected_person.person.family_name or '' }}</span></div>
+        {% if selected_person.person.family_origin %}<div class="info-item"><span class="info-label">الهوا</span><span>{{ selected_person.person.family_origin }}</span></div>{% endif %}
+        {% if selected_person.person.nationality %}<div class="info-item"><span class="info-label">الجنسية</span><span>{{ selected_person.person.nationality }}</span></div>{% endif %}
+        {% if selected_person.person.registry_number %}<div class="info-item"><span class="info-label">رقم السجل</span><span>{{ selected_person.person.registry_number }}</span></div>{% endif %}
+        {% set scopes = selected_person.documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
+        {% if scopes %}<div class="info-item"><span class="info-label">القضاء</span><span>{{ scopes | join('، ') }}</span></div>{% endif %}
+      </div>
+      <div style="margin-top:1rem">
+        <a href="/persons/{{ selected_person.person.id }}" class="btn btn-secondary">عرض التفاصيل كاملة</a>
+        {% set scopes = selected_person.documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
+        <div class="export-dropdown" style="position: relative; display: inline-block;">
+          <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')">📥 تصدير كملف إكسل ▾</button>
+          <div class="export-menu" style="display:none; position:absolute; left:0; top:100%; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.15); z-index:100; min-width:220px; margin-top:4px;">
+            <a href="/persons/{{ selected_person.person.id }}/export" class="export-option" download style="display:block; padding:10px 16px; text-decoration:none; color:#333; border-bottom:1px solid #eee;">📥 تصدير الكل</a>
+            {% for scope in scopes %}
+              {% if scope %}
+              <a href="/persons/{{ selected_person.person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download style="display:block; padding:10px 16px; text-decoration:none; color:#333;">📥 {{ scope }}</a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if selected_person.properties %}
+    <div class="table-wrapper" style="margin-top:1rem">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>اسم الفريق</th>
+            <th>رقم العقار</th>
+            <th>القسم</th>
+            <th>البلوك</th>
+            <th>المنطقة العقارية</th>
+            <th>القضاء</th>
+            <th>عدد الأسهم</th>
+            <th>نوع الملكية</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pr in selected_person.properties %}
+          <tr {% if pr.ownership_type == 'لا يملك' %}style="background-color: #fff3f3; color: #dc3545; font-weight: bold;"{% endif %}>
+            <td>{{ loop.index }}</td>
+            <td>{{ pr.party_name or '' }}</td>
+            <td>{{ pr.property_number or '' }}</td>
+            <td>{{ pr.section or '' }}</td>
+            <td>{{ pr.block or '' }}</td>
+            <td>{{ pr.real_estate_district or '' }}</td>
+            <td>{{ pr.qaza or '' }}</td>
+            <td>{{ pr.num_shares or '' }}</td>
+            <td>{{ pr.ownership_type or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="margin-top: 1rem; padding: 15px; background-color: #fff3f3; border: 1px solid #ffcaca; border-radius: 8px; color: #dc3545; font-weight: bold; text-align: center;">
+      ⚠️ نتيجة البحث: لا يملك أي عقار في القضاء المذكور.
+    </div>
+    {% endif %}
+  {% else %}
+    <div class="persons-grid">
+      {% for p in persons %}
+      <a href="/persons/{{ p.id }}" class="person-card">
+        <div class="person-name">{{ p.first_name }} {{ p.father_name or '' }} {{ p.family_name or '' }}</div>
+        <div class="person-meta">
+          {% if p.family_origin %}{{ p.family_origin }} · {% endif %}
+          {% if p.property_count > 0 %}
+          {{ p.property_count }} عقار
+          {% else %}
+          <span style="color: #dc3545; font-weight: bold;">لا يملك عقارات</span>
+          {% endif %}
+        </div>
+        {% if p.search_scopes %}
+        <div class="person-reg">نطاق البحث: {{ p.search_scopes | replace(',', '، ') }}</div>
+        {% endif %}
+        {% if p.registry_number %}
+        <div class="person-reg">سجل: {{ p.registry_number }}</div>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Property results -->
+{% if properties %}
+<div class="results-section">
+  <h2>نتائج البحث بالعقار ({{ properties|length }} سجل)</h2>
+  <div class="table-wrapper">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>المالك</th>
+          <th>اسم الفريق</th>
+          <th>رقم العقار</th>
+          <th>القسم</th>
+          <th>البلوك</th>
+          <th>المنطقة العقارية</th>
+          <th>القضاء</th>
+          <th>عدد الأسهم</th>
+          <th>نوع الملكية</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pr in properties %}
+        <tr>
+          <td>
+            {% if pr.person_id %}
+            <a href="/persons/{{ pr.person_id }}">{{ pr.first_name or '' }} {{ pr.family_name or '' }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ pr.party_name or '' }}</td>
+          <td class="prop-num">{{ pr.property_number or '' }}</td>
+          <td>{{ pr.section or '' }}</td>
+          <td>{{ pr.block or '' }}</td>
+          <td>{{ pr.real_estate_district or '' }}</td>
+          <td>{{ pr.qaza or '' }}</td>
+          <td>{{ pr.num_shares or '' }}</td>
+          <td>{{ pr.ownership_type or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if (q or property_number or district or block) and not persons and not properties %}
+<div class="no-results">
+  <p>لا توجد نتائج للبحث.</p>
+  <p><a href="/search">بحث جديد</a></p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  event.target.classList.add('active');
+}
+
+// Export dropdown toggle
+document.addEventListener('click', function(e) {
+  document.querySelectorAll('.export-menu').forEach(function(menu) {
+    if (!menu.parentElement.contains(e.target)) {
+      menu.classList.remove('show');
+    }
+  });
+});
+
+// CSS for show class
+var style = document.createElement('style');
+style.textContent = '.export-menu.show { display: block !important; } .export-option:hover { background-color: #f0f0f0; }';
+document.head.appendChild(style);
+
+// Auto-select correct tab based on query params
+window.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get('property_number') || params.get('district') || params.get('block')) {
+    showTab('property');
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    document.querySelectorAll('.tab-btn')[0].classList.remove('active');
+  } else {
+    document.getElementById('qInput').focus();
+  }
+});
+</script>
+{% endblock %}

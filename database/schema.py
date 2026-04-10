@@ -1,0 +1,113 @@
+from database.connection import get_db
+
+
+def _migrate(conn):
+    """Add columns that may not exist in older databases."""
+    cursor = conn.execute("PRAGMA table_info(documents)")
+    existing = {row[1] for row in cursor.fetchall()}
+    migrations = [
+        ("provider", "TEXT"),
+        ("pdf_group_id", "TEXT"),
+        ("page_number", "INTEGER"),
+        ("page_info", "TEXT"),
+        ("search_scope", "TEXT"),
+        ("request_purpose", "TEXT"),
+        ("data_valid_until", "TEXT"),
+        ("registry_office", "TEXT"),
+        ("owns_properties", "BOOLEAN"),
+        ("declared_property_count", "INTEGER"),
+    ]
+    for col, col_type in migrations:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE documents ADD COLUMN {col} {col_type}")
+
+    cursor = conn.execute("PRAGMA table_info(properties)")
+    existing_prop = {row[1] for row in cursor.fetchall()}
+    migrations_prop = [
+        ("party_name", "TEXT"),
+        ("qaza", "TEXT"),
+    ]
+    for col, col_type in migrations_prop:
+        if col not in existing_prop:
+            conn.execute(f"ALTER TABLE properties ADD COLUMN {col} {col_type}")
+
+def create_tables():
+    with get_db() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS persons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                first_name TEXT NOT NULL,
+                father_name TEXT,
+                mother_name TEXT,
+                family_name TEXT,
+                family_origin TEXT,
+                nationality TEXT,
+                birth_date TEXT,
+                registry_number TEXT UNIQUE,
+                registry_place TEXT,
+                first_name_norm TEXT,
+                family_name_norm TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id INTEGER REFERENCES persons(id),
+                image_path TEXT NOT NULL,
+                request_number TEXT,
+                request_date TEXT,
+                applicant_name_raw TEXT,
+                request_purpose TEXT,
+                data_valid_until TEXT,
+                registry_office TEXT,
+                owns_properties BOOLEAN,
+                declared_property_count INTEGER,
+                provider TEXT,
+                pdf_group_id TEXT,
+                page_number INTEGER,
+                page_info TEXT,
+                search_scope TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                raw_extraction_json TEXT,
+                extraction_error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS properties (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                person_id INTEGER REFERENCES persons(id),
+                row_order INTEGER DEFAULT 0,
+                area_name TEXT,
+                party_name TEXT,
+                property_number TEXT,
+                section TEXT,
+                block TEXT,
+                real_estate_district TEXT,
+                space TEXT,
+                qaza TEXT,
+                num_shares TEXT,
+                ownership_type TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_persons_first_name_norm ON persons(first_name_norm);
+            CREATE INDEX IF NOT EXISTS idx_persons_family_name_norm ON persons(family_name_norm);
+            CREATE INDEX IF NOT EXISTS idx_persons_registry_number ON persons(registry_number);
+            CREATE INDEX IF NOT EXISTS idx_documents_person_id ON documents(person_id);
+            CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+            CREATE INDEX IF NOT EXISTS idx_properties_person_id ON properties(person_id);
+            CREATE INDEX IF NOT EXISTS idx_properties_property_number ON properties(property_number);
+            CREATE INDEX IF NOT EXISTS idx_properties_district ON properties(real_estate_district);
+            CREATE INDEX IF NOT EXISTS idx_properties_block ON properties(block);
+        """)
+        _migrate(conn)

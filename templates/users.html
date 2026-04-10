@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة المستخدمين - سجل العقارات اللبناني{% endblock %}
+
+{% block content %}
+<div class="users-container" style="max-width: 800px; margin: 20px auto; padding: 20px;">
+    <h2>إدارة النظام والمستخدمين</h2>
+    
+    {% if backup_msg %}
+    <div style="padding: 10px; background-color: #d4edda; color: #155724; border-radius: 4px; margin-bottom: 15px;">
+        {{ backup_msg }}
+    </div>
+    {% endif %}
+    
+    <div style="margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+        <h3>نسخ احتياطي لقاعدة البيانات</h3>
+        <p>قم بإنشاء نسخة احتياطية من قاعدة البيانات الحالية.</p>
+        <a href="/auth/backup" style="display: inline-block; padding: 8px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 4px;">إنشاء نسخة احتياطية</a>
+    </div>
+
+    <div style="margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+        <h3>إضافة مستخدم جديد</h3>
+        <form method="post" action="/auth/users/create" style="display: flex; gap: 10px; align-items: flex-end;">
+            <div>
+                <label for="username" style="display: block; margin-bottom: 5px;">اسم المستخدم</label>
+                <input type="text" id="username" name="username" required style="padding: 8px;">
+            </div>
+            <div>
+                <label for="password" style="display: block; margin-bottom: 5px;">كلمة المرور</label>
+                <input type="password" id="password" name="password" required style="padding: 8px;">
+            </div>
+            <button type="submit" style="padding: 9px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">إضافة</button>
+        </form>
+    </div>
+
+    <div style="padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+        <h3>المستخدمين</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+            <thead>
+                <tr style="background-color: #f8f9fa;">
+                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6; text-align: right;">الرقم</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6; text-align: right;">اسم المستخدم</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6; text-align: right;">تاريخ الإنشاء</th>
+                    <th style="padding: 10px; border-bottom: 2px solid #dee2e6; text-align: right;">إجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">{{ user.id }}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">{{ user.username }}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">{{ user.created_at }}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">
+                        <form method="post" action="/auth/users/delete/{{ user.id }}" onsubmit="return confirm('هل أنت متأكد من حذف هذا المستخدم؟');" style="display: inline;">
+                            <button type="submit" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">حذف</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

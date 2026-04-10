@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ person.first_name }} {{ person.family_name or '' }} — سجل العقارات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/search" class="back-link">← العودة للبحث</a>
+    <h1>{{ person.first_name }} {{ person.father_name or '' }} {{ person.family_name or '' }}</h1>
+  </div>
+  <div>
+    {% set scopes = documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
+    <div class="export-dropdown" style="position: relative; display: inline-block;">
+      <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')">📥 تصدير كملف إكسل ▾</button>
+      <div class="export-menu" style="display:none; position:absolute; left:0; top:100%; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,.15); z-index:100; min-width:220px; margin-top:4px;">
+        <a href="/persons/{{ person.id }}/export" class="export-option" download style="display:block; padding:10px 16px; text-decoration:none; color:#333; border-bottom:1px solid #eee;">📥 تصدير الكل</a>
+        {% for scope in scopes %}
+          {% if scope %}
+          <a href="/persons/{{ person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download style="display:block; padding:10px 16px; text-decoration:none; color:#333;">📥 {{ scope }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="person-info-card">
+  <div class="info-grid">
+    <div class="info-item"><span class="info-label">الاسم الكامل</span><span>{{ person.first_name }} {{ person.father_name or '' }} {{ person.family_name or '' }}</span></div>
+    {% if person.mother_name %}<div class="info-item"><span class="info-label">اسم الأم</span><span>{{ person.mother_name }}</span></div>{% endif %}
+    {% if person.family_origin %}<div class="info-item"><span class="info-label">الهوا</span><span>{{ person.family_origin }}</span></div>{% endif %}
+    {% if person.nationality %}<div class="info-item"><span class="info-label">الجنسية</span><span>{{ person.nationality }}</span></div>{% endif %}
+    {% if person.birth_date %}<div class="info-item"><span class="info-label">تاريخ الولادة</span><span>{{ person.birth_date }}</span></div>{% endif %}
+    {% if person.registry_number %}<div class="info-item"><span class="info-label">رقم السجل</span><span>{{ person.registry_number }}</span></div>{% endif %}
+    {% if person.registry_place %}<div class="info-item"><span class="info-label">مكان السجل</span><span>{{ person.registry_place }}</span></div>{% endif %}
+    {% set scopes = documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
+    {% if scopes %}<div class="info-item"><span class="info-label">القضاء</span><span>{{ scopes | join('، ') }}</span></div>{% endif %}
+  </div>
+</div>
+
+<div class="section-header">
+  <h2>العقارات المملوكة ({{ properties|length }})</h2>
+</div>
+
+{% if properties %}
+<div class="table-wrapper">
+  <table class="results-table props-full">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>اسم الفريق</th>
+        <th>رقم العقار</th>
+        <th>القسم</th>
+        <th>البلوك</th>
+        <th>المنطقة العقارية</th>
+        <th>القضاء</th>
+        <th>عدد الأسهم</th>
+        <th>نوع الملكية</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pr in properties %}
+      <tr {% if pr.ownership_type == 'لا يملك' %}style="background-color: #fff3f3; color: #dc3545; font-weight: bold;"{% endif %}>
+        <td class="row-num">{{ loop.index }}</td>
+        <td>{{ pr.party_name or '' }}</td>
+        <td class="prop-num">{{ pr.property_number or '' }}</td>
+        <td>{{ pr.section or '' }}</td>
+        <td>{{ pr.block or '' }}</td>
+        <td>{{ pr.real_estate_district or '' }}</td>
+        <td>{{ pr.qaza or '' }}</td>
+        <td>{{ pr.num_shares or '' }}</td>
+        <td>{{ pr.ownership_type or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div style="margin: 1rem 0; padding: 15px; background-color: #fff3f3; border: 1px solid #ffcaca; border-radius: 8px; color: #dc3545; font-weight: bold; text-align: center;">
+  ⚠️ نتيجة البحث: لا يملك أي عقار في نطاق البحث المذكور.
+</div>
+{% endif %}
+
+{% if documents %}
+<div class="docs-section">
+  <h3>الوثائق الأصلية</h3>
+  <div class="doc-thumbnails">
+    {% for d in documents %}
+    <a href="/review/{{ d.id }}" class="doc-thumb">
+      <img src="/uploads/{{ d.image_path }}" alt="وثيقة">
+      <div class="doc-thumb-info">
+        {% if d.request_number %}طلب {{ d.request_number }}{% endif %}
+        {% if d.request_date %}<br>{{ d.request_date }}{% endif %}
+        {% if d.search_scope %}<br>القضاء: {{ d.search_scope }}{% endif %}
+        {% if d.page_info %}<br><span class="doc-page-info">{{ d.page_info }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Export dropdown toggle
+document.addEventListener('click', function(e) {
+  document.querySelectorAll('.export-menu').forEach(function(menu) {
+    if (!menu.parentElement.contains(e.target)) {
+      menu.classList.remove('show');
+    }
+  });
+});
+
+var style = document.createElement('style');
+style.textContent = '.export-menu.show { display: block !important; } .export-option:hover { background-color: #f0f0f0; }';
+document.head.appendChild(style);
+</script>
+{% endblock %}
