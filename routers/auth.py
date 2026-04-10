@@ -42,12 +42,14 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     sessions[session_id] = dict(user)
     
     from config import ENVIRONMENT
+    # secure=True only when accessed via HTTPS (check X-Forwarded-Proto from nginx)
+    is_https = ENVIRONMENT == "production" and request.headers.get("x-forwarded-proto") == "https"
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         key="session_id",
         value=session_id,
         httponly=True,
-        secure=ENVIRONMENT == "production",
+        secure=is_https,
         samesite="lax",
         max_age=86400,  # 24 hours
     )
