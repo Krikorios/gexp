@@ -42,3 +42,28 @@
 .form-panel {
   min-width: 0;
 }
+
+/* ============================
+   Review — Responsive
+   ============================ */
+@media (max-width: 900px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+  }
+  .image-panel {
+    position: relative;
+    top: auto;
+  }
+  .image-container {
+    max-height: 50vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .image-container {
+    max-height: 40vh;
+  }
+  .image-toolbar {
+    justify-content: center;
+  }
+}

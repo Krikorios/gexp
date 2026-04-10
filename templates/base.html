@@ -12,7 +12,10 @@
   <nav class="navbar">
     <div class="nav-container">
       <a class="nav-brand" href="/">🏠 سجل العقارات</a>
-      <div class="nav-links">
+      <button class="nav-toggle" id="navToggle" aria-label="القائمة">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
         <a href="/" class="nav-link">رفع وثائق</a>
         <a href="/review/next" class="nav-link">مراجعة</a>
         <a href="/search" class="nav-link">بحث</a>
@@ -28,6 +31,16 @@
     {% block content %}{% endblock %}
   </main>
 
+  <script>
+    const navToggle = document.getElementById('navToggle');
+    const navLinks = document.getElementById('navLinks');
+    if (navToggle) {
+      navToggle.addEventListener('click', () => {
+        navLinks.classList.toggle('open');
+        navToggle.classList.toggle('active');
+      });
+    }
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

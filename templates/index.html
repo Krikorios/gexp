@@ -23,12 +23,12 @@
 
 <div class="upload-card">
   <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-    <div class="drop-zone" id="dropZone">
+    <input type="file" name="files" id="fileInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
+    <label for="fileInput" class="drop-zone" id="dropZone">
       <div class="drop-icon">📄</div>
       <p class="drop-text">اسحب الملفات هنا أو انقر للاختيار</p>
       <p class="drop-hint">JPG، PNG، PDF — يمكن رفع عدة ملفات دفعة واحدة</p>
-      <input type="file" name="files" id="fileInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
-    </div>
+    </label>
 
     <div id="fileList" class="file-list hidden"></div>
 
@@ -77,7 +77,7 @@ const fileInput = document.getElementById('fileInput');
 const fileList = document.getElementById('fileList');
 const uploadActions = document.getElementById('uploadActions');
 
-dropZone.addEventListener('click', () => fileInput.click());
+// label[for] natively triggers the file input on all platforms including iOS
 
 dropZone.addEventListener('dragover', e => {
   e.preventDefault();
