@@ -2,9 +2,16 @@
 {% block title %}رفع وثائق — سجل العقارات{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>بطاقات معلومات الملكية العقارية</h1>
-  <p class="subtitle">ارفع صور أو ملفات PDF للوثائق — اختر محرك الاستخراج (مجاني أو ذكاء اصطناعي)</p>
+<div class="page-header page-header-hero">
+  <div>
+    <span class="page-kicker">منصة الأرشفة والمراجعة</span>
+    <h1>بطاقات معلومات الملكية العقارية</h1>
+    <p class="subtitle">ارفع صور أو ملفات PDF، ثم راجع النتائج واستكمل البحث من واجهة واحدة واضحة وسريعة.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/search" class="btn btn-secondary">فتح البحث</a>
+    <a href="/documents" class="btn btn-primary">عرض الوثائق</a>
+  </div>
 </div>
 
 {% if stats and stats.total %}
@@ -16,16 +23,24 @@
 </div>
 {% if stats.pending_review %}
 <div class="alert-banner">
-  <a href="/review/next">▶ ابدأ مراجعة {{ stats.pending_review }} وثيقة</a>
+  <a href="/review/next">ابدأ مراجعة {{ stats.pending_review }} وثيقة →</a>
 </div>
 {% endif %}
 {% endif %}
 
 <div class="upload-card">
+  <div class="card-heading">
+    <div>
+      <h2>رفع ملفات جديدة</h2>
+      <p>اختر دفعة صور أو PDF، ثم حدّد محرك الاستخراج قبل بدء المعالجة.</p>
+    </div>
+  </div>
   <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
     <input type="file" name="files" id="fileInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
     <label for="fileInput" class="drop-zone" id="dropZone">
-      <div class="drop-icon">📄</div>
+      <div class="drop-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
       <p class="drop-text">اسحب الملفات هنا أو انقر للاختيار</p>
       <p class="drop-hint">JPG، PNG، PDF — يمكن رفع عدة ملفات دفعة واحدة</p>
     </label>
@@ -51,7 +66,8 @@
 
     <div id="uploadActions" class="upload-actions hidden">
       <button type="submit" class="btn btn-primary btn-large">
-        ⬆ رفع ومعالجة
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        رفع ومعالجة
       </button>
       <button type="button" class="btn btn-secondary" onclick="clearFiles()">إلغاء</button>
     </div>
@@ -60,12 +76,22 @@
 
 <div class="quick-links">
   <a href="/search" class="quick-link-card">
-    <span class="ql-icon">🔍</span>
-    <span>البحث في قاعدة البيانات</span>
+    <span class="ql-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </span>
+    <span>
+      <strong>البحث في قاعدة البيانات</strong>
+      <small>ابحث بالأسماء أو بالعقارات مع نتائج منظّمة.</small>
+    </span>
   </a>
   <a href="/documents" class="quick-link-card">
-    <span class="ql-icon">📋</span>
-    <span>قائمة جميع الوثائق</span>
+    <span class="ql-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    </span>
+    <span>
+      <strong>قائمة جميع الوثائق</strong>
+      <small>تابع الحالات، افتح المراجعة، أو احذف المستندات غير المطلوبة.</small>
+    </span>
   </a>
 </div>
 {% endblock %}
@@ -96,7 +122,7 @@ fileInput.addEventListener('change', () => showFiles(fileInput.files));
 function showFiles(files) {
   if (!files.length) return;
   fileList.innerHTML = Array.from(files).map(f =>
-    `<div class="file-item">${f.name.endsWith('.pdf')?'📕':'📄'} ${f.name} <span class="file-size">${(f.size/1024).toFixed(0)} KB</span></div>`
+    `<div class="file-item">${f.name} <span class="file-size">${(f.size/1024).toFixed(0)} KB</span></div>`
   ).join('');
   fileList.classList.remove('hidden');
   document.getElementById('providerSection').classList.remove('hidden');
@@ -112,7 +138,7 @@ function clearFiles() {
 }
 
 document.getElementById('uploadForm').addEventListener('submit', function() {
-  document.querySelector('.btn-primary').textContent = '⏳ جارٍ الرفع...';
+  document.querySelector('.btn-primary').textContent = 'جارٍ الرفع...';
   document.querySelector('.btn-primary').disabled = true;
 });
 </script>

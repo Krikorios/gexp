@@ -6,7 +6,17 @@
 
 {% block content %}
 <div class="login-card">
-    <h2>🏠 تسجيل الدخول</h2>
+    <div class="login-logo">
+      <span class="login-logo-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21h18"/>
+          <path d="M5 21V7l7-4 7 4v14"/>
+          <path d="M9 21v-6h6v6"/>
+        </svg>
+      </span>
+    </div>
+    <h2>تسجيل الدخول</h2>
+    <p class="login-subtitle">أدخل بياناتك للوصول إلى سجل العقارات</p>
 
     {% if error %}
     <div class="login-error">{{ error }}</div>
@@ -23,7 +33,7 @@
             <input type="password" id="password" name="password" required placeholder="أدخل كلمة المرور">
         </div>
 
-        <button type="submit" class="btn btn-primary btn-large" style="width:100%; justify-content:center; margin-top:.5rem;">
+        <button type="submit" class="btn btn-primary btn-large btn-block login-submit">
             دخول
         </button>
     </form>

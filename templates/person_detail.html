@@ -4,18 +4,28 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <a href="/search" class="back-link">← العودة للبحث</a>
+    <a href="/search" class="back-link no-print">← العودة للبحث</a>
     <h1>{{ person.first_name }} {{ person.father_name or '' }} {{ person.family_name or '' }}</h1>
+    {% if current_search_scope %}
+    <p class="subtitle">عرض نتائج نطاق البحث: {{ current_search_scope }}</p>
+    {% endif %}
   </div>
-  <div>
+  <div class="header-actions no-print">
+    <button type="button" class="btn btn-secondary" onclick="window.print()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      طباعة
+    </button>
     {% set scopes = documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
     <div class="export-dropdown">
-      <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')">📥 تصدير كملف إكسل ▾</button>
+      <button type="button" class="btn btn-primary" data-export-toggle>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        تصدير كملف إكسل ▾
+      </button>
       <div class="export-menu">
-        <a href="/persons/{{ person.id }}/export" class="export-option" download>📥 تصدير الكل</a>
+        <a href="/persons/{{ person.id }}/export" class="export-option" download>تصدير الكل</a>
         {% for scope in scopes %}
           {% if scope %}
-          <a href="/persons/{{ person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download>📥 {{ scope }}</a>
+          <a href="/persons/{{ person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download>{{ scope }}</a>
           {% endif %}
         {% endfor %}
       </div>
@@ -35,6 +45,11 @@
     {% set scopes = documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
     {% if scopes %}<div class="info-item"><span class="info-label">القضاء</span><span>{{ scopes | join('، ') }}</span></div>{% endif %}
   </div>
+  {% if current_search_scope %}
+  <div class="person-actions no-print">
+    <a href="/persons/{{ person.id }}" class="btn btn-secondary">عرض كل النطاقات</a>
+  </div>
+  {% endif %}
 </div>
 
 <div class="section-header">
@@ -43,7 +58,7 @@
 
 {% if properties %}
 <div class="table-wrapper">
-  <table class="results-table props-full">
+  <table class="results-table props-full responsive-table">
     <thead>
       <tr>
         <th>#</th>
@@ -59,29 +74,29 @@
     </thead>
     <tbody>
       {% for pr in properties %}
-      <tr {% if pr.ownership_type == 'لا يملك' %}style="background-color: #fff3f3; color: #dc3545; font-weight: bold;"{% endif %}>
-        <td class="row-num">{{ loop.index }}</td>
-        <td>{{ pr.party_name or '' }}</td>
-        <td class="prop-num">{{ pr.property_number or '' }}</td>
-        <td>{{ pr.section or '' }}</td>
-        <td>{{ pr.block or '' }}</td>
-        <td>{{ pr.real_estate_district or '' }}</td>
-        <td>{{ pr.qaza or '' }}</td>
-        <td>{{ pr.num_shares or '' }}</td>
-        <td>{{ pr.ownership_type or '' }}</td>
+      <tr class="{{ 'ownership-alert' if pr.ownership_type == 'لا يملك' else '' }}">
+        <td data-label="#" class="row-num">{{ loop.index }}</td>
+        <td data-label="اسم الفريق">{{ pr.party_name or '' }}</td>
+        <td data-label="رقم العقار" class="prop-num">{{ pr.property_number or '' }}</td>
+        <td data-label="القسم">{{ pr.section or '' }}</td>
+        <td data-label="البلوك">{{ pr.block or '' }}</td>
+        <td data-label="المنطقة العقارية">{{ pr.real_estate_district or '' }}</td>
+        <td data-label="القضاء">{{ pr.qaza or '' }}</td>
+        <td data-label="عدد الأسهم">{{ pr.num_shares or '' }}</td>
+        <td data-label="نوع الملكية">{{ pr.ownership_type or '' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% else %}
-<div class="error-banner" style="justify-content:center;">
+<div class="error-banner centered-banner">
   ⚠️ نتيجة البحث: لا يملك أي عقار في نطاق البحث المذكور.
 </div>
 {% endif %}
 
 {% if documents %}
-<div class="docs-section">
+<div class="docs-section no-print">
   <h3>الوثائق الأصلية</h3>
   <div class="doc-thumbnails">
     {% for d in documents %}
@@ -101,19 +116,3 @@
 
 {% endblock %}
 
-{% block scripts %}
-<script>
-// Export dropdown toggle
-document.addEventListener('click', function(e) {
-  document.querySelectorAll('.export-menu').forEach(function(menu) {
-    if (!menu.parentElement.contains(e.target)) {
-      menu.classList.remove('show');
-    }
-  });
-});
-
-var style = document.createElement('style');
-style.textContent = '.export-menu.show { display: block !important; } .export-option:hover { background-color: #f0f0f0; }';
-document.head.appendChild(style);
-</script>
-{% endblock %}

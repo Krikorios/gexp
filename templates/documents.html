@@ -3,8 +3,15 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>قائمة الوثائق</h1>
-  <a href="/" class="btn btn-primary">+ رفع وثائق جديدة</a>
+  <div>
+    <span class="page-kicker">متابعة المعالجة</span>
+    <h1>قائمة الوثائق</h1>
+    <p class="subtitle">تابع حالة كل وثيقة وانتقل مباشرة إلى شاشة المراجعة عند الحاجة.</p>
+  </div>
+  <a href="/" class="btn btn-primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    رفع وثائق جديدة
+  </a>
 </div>
 
 {% if uploaded %}
@@ -33,12 +40,12 @@
 
 {% if stats.pending_review %}
 <div class="alert-banner">
-  <a href="/review/next">▶ ابدأ مراجعة {{ stats.pending_review }} وثيقة</a>
+  <a href="/review/next">ابدأ مراجعة {{ stats.pending_review }} وثيقة →</a>
 </div>
 {% endif %}
 
 <div class="table-wrapper">
-  <table class="results-table">
+  <table class="results-table responsive-table">
     <thead>
       <tr>
         <th>#</th>
@@ -53,21 +60,21 @@
     <tbody>
       {% for d in documents %}
       <tr>
-        <td>{{ d.id }}</td>
-        <td>
-          <a href="/review/{{ d.id }}">
+        <td data-label="#">{{ d.id }}</td>
+        <td data-label="الصورة">
+          <a href="/review/{{ d.id }}" title="فتح الوثيقة {{ d.id }} للمراجعة" aria-label="فتح الوثيقة {{ d.id }} للمراجعة">
             <img src="/uploads/{{ d.image_path }}" class="doc-thumb-mini" alt="">
           </a>
         </td>
-        <td>
+        <td data-label="الشخص">
           {% if d.person_id %}
           <a href="/persons/{{ d.person_id }}">{{ d.first_name or '' }} {{ d.family_name or '' }}</a>
           {% else %}—{% endif %}
         </td>
-        <td>{{ d.request_number or '—' }}</td>
-        <td><span class="status-badge status-{{ d.status }}">{{ d.status }}</span></td>
-        <td>{{ d.created_at[:10] if d.created_at else '' }}</td>
-        <td class="doc-actions">
+        <td data-label="رقم الطلب">{{ d.request_number or '—' }}</td>
+        <td data-label="الحالة"><span class="status-badge status-{{ d.status }}">{{ d.status }}</span></td>
+        <td data-label="التاريخ">{{ d.created_at[:10] if d.created_at else '' }}</td>
+        <td data-label="الإجراءات" class="doc-actions">
           <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">
             {% if d.status == 'confirmed' %}عرض{% else %}مراجعة{% endif %}
           </a>

@@ -8,13 +8,19 @@
 {% block content %}
 <div class="review-header">
   <div class="review-title">
-    <h2>مراجعة الوثيقة #{{ doc.id }}</h2>
+    <div>
+      <span class="page-kicker">المراجعة والتحقق</span>
+      <h2>مراجعة الوثيقة #{{ doc.id }}</h2>
+    </div>
     <span class="status-badge status-{{ doc.status }}">{{ doc.status }}</span>
   </div>
   <div class="review-nav">
     <a href="/documents" class="btn btn-secondary btn-sm">← قائمة الوثائق</a>
     <a href="/review/next" class="btn btn-secondary btn-sm">التالية ←</a>
-    <button class="btn btn-danger btn-sm" onclick="deleteDoc({{ doc.id }})">🗑 حذف الوثيقة</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteDoc({{ doc.id }})">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      حذف الوثيقة
+    </button>
   </div>
 </div>
 
@@ -29,9 +35,15 @@
   <!-- Image Panel -->
   <div class="image-panel">
     <div class="image-toolbar">
-      <button onclick="zoomIn()" class="btn btn-sm">🔍+</button>
-      <button onclick="zoomOut()" class="btn btn-sm">🔍-</button>
-      <button onclick="resetZoom()" class="btn btn-sm">↺</button>
+      <button type="button" onclick="zoomIn()" class="btn btn-sm btn-secondary" title="تكبير">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button type="button" onclick="zoomOut()" class="btn btn-sm btn-secondary" title="تصغير">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </button>
+      <button type="button" onclick="resetZoom()" class="btn btn-sm btn-secondary" title="إعادة ضبط">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
     </div>
     <div class="image-container" id="imageContainer">
       <img id="docImage" src="/uploads/{{ doc.image_path }}" alt="وثيقة" class="doc-image">
@@ -47,46 +59,47 @@
         <h3>بيانات الشخص</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label>الاسم *</label>
-            <input type="text" name="first_name" value="{{ doc.person.get('first_name') or '' }}" required>
+            <label for="first_name">الاسم *</label>
+            <input id="first_name" type="text" name="first_name" value="{{ doc.person.get('first_name') or '' }}" title="الاسم" required>
           </div>
           <div class="form-group">
-            <label>اسم الأب</label>
-            <input type="text" name="father_name" value="{{ doc.person.get('father_name') or '' }}">
+            <label for="father_name">اسم الأب</label>
+            <input id="father_name" type="text" name="father_name" value="{{ doc.person.get('father_name') or '' }}" title="اسم الأب">
           </div>
           <div class="form-group">
-            <label>اسم الأم</label>
-            <input type="text" name="mother_name" value="{{ doc.person.get('mother_name') or '' }}">
+            <label for="mother_name">اسم الأم</label>
+            <input id="mother_name" type="text" name="mother_name" value="{{ doc.person.get('mother_name') or '' }}" title="اسم الأم">
           </div>
           <div class="form-group">
-            <label>اللقب</label>
-            <input type="text" name="family_name" value="{{ doc.person.get('family_name') or '' }}">
+            <label for="family_name">اللقب</label>
+            <input id="family_name" type="text" name="family_name" value="{{ doc.person.get('family_name') or '' }}" title="اللقب">
           </div>
           <div class="form-group">
-            <label>الهوا / المنشأ</label>
-            <input type="text" name="family_origin" value="{{ doc.person.get('family_origin') or '' }}">
+            <label for="family_origin">الهوا / المنشأ</label>
+            <input id="family_origin" type="text" name="family_origin" value="{{ doc.person.get('family_origin') or '' }}" title="الهوا أو المنشأ">
           </div>
           <div class="form-group">
-            <label>الجنسية</label>
-            <input type="text" name="nationality" value="{{ doc.person.get('nationality') or '' }}">
+            <label for="nationality">الجنسية</label>
+            <input id="nationality" type="text" name="nationality" value="{{ doc.person.get('nationality') or '' }}" title="الجنسية">
           </div>
           <div class="form-group">
-            <label>تاريخ الولادة</label>
-            <input type="text" name="birth_date" value="{{ doc.person.get('birth_date') or '' }}">
+            <label for="birth_date">تاريخ الولادة</label>
+            <input id="birth_date" type="text" name="birth_date" value="{{ doc.person.get('birth_date') or '' }}" title="تاريخ الولادة">
           </div>
           <div class="form-group">
-            <label>رقم السجل</label>
-            <input type="text" name="registry_number" value="{{ doc.person.get('registry_number') or '' }}">
+            <label for="registry_number">رقم السجل</label>
+            <input id="registry_number" type="text" name="registry_number" value="{{ doc.person.get('registry_number') or '' }}" title="رقم السجل">
           </div>
           <div class="form-group">
-            <label>مكان السجل</label>
-            <input type="text" name="registry_place" value="{{ doc.person.get('registry_place') or '' }}">
+            <label for="registry_place">مكان السجل</label>
+            <input id="registry_place" type="text" name="registry_place" value="{{ doc.person.get('registry_place') or '' }}" title="مكان السجل">
           </div>
         </div>
 
         <!-- Merge suggestion (populated by JS) -->
         <div id="mergeSuggestion" class="merge-banner hidden">
           <h4>شخص مشابه موجود في قاعدة البيانات:</h4>
+          <p id="mergeScopeNotice" class="merge-note hidden"></p>
           <div id="mergeMatches"></div>
           <div class="merge-actions">
             <label><input type="radio" name="merge_action" value="merge" checked> دمج مع الشخص الموجود</label>
@@ -101,20 +114,20 @@
         <h3>بيانات الطلب</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label>رقم الطلب</label>
-            <input type="text" name="request_number" value="{{ doc.request_number or '' }}">
+            <label for="request_number">رقم الطلب</label>
+            <input id="request_number" type="text" name="request_number" value="{{ doc.request_number or '' }}" title="رقم الطلب">
           </div>
           <div class="form-group">
-            <label>تاريخ الطلب</label>
-            <input type="text" name="request_date" value="{{ doc.request_date or '' }}">
+            <label for="request_date">تاريخ الطلب</label>
+            <input id="request_date" type="text" name="request_date" value="{{ doc.request_date or '' }}" title="تاريخ الطلب">
           </div>
           <div class="form-group">
-            <label>معلومات الصفحة</label>
-            <input type="text" name="page_info" value="{{ doc.page_info or '' }}" placeholder="مثال: 1 من 3">
+            <label for="page_info">معلومات الصفحة</label>
+            <input id="page_info" type="text" name="page_info" value="{{ doc.page_info or '' }}" title="معلومات الصفحة" placeholder="مثال: 1 من 3">
           </div>
           <div class="form-group">
-            <label>نطاق البحث (القضاء)</label>
-            <input type="text" name="search_scope" value="{{ doc.search_scope or '' }}" placeholder="مثال: المتن">
+            <label for="search_scope">نطاق البحث (القضاء)</label>
+            <input id="search_scope" type="text" name="search_scope" value="{{ doc.search_scope or '' }}" title="نطاق البحث" placeholder="مثال: المتن">
           </div>
         </div>
       </section>
@@ -125,8 +138,8 @@
           <h3>العقارات المملوكة</h3>
           <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+ إضافة صف</button>
         </div>
-        <div class="table-wrapper">
-          <table id="propertiesTable" class="props-table">
+        <div class="table-wrapper table-wrapper-editable">
+          <table id="propertiesTable" class="props-table mobile-edit-table">
             <thead>
               <tr>
                 <th>اسم الفريق</th>
@@ -143,15 +156,15 @@
             <tbody id="propertiesTbody">
               {% for prop in doc.properties %}
               <tr>
-                <td><input type="text" value="{{ prop.party_name or '' }}"></td>
-                <td><input type="text" value="{{ prop.property_number or '' }}"></td>
-                <td><input type="text" value="{{ prop.section or '' }}"></td>
-                <td><input type="text" value="{{ prop.block or '' }}"></td>
-                <td><input type="text" value="{{ prop.real_estate_district or '' }}"></td>
-                <td><input type="text" value="{{ prop.qaza or '' }}"></td>
-                <td><input type="text" value="{{ prop.num_shares or '' }}"></td>
-                <td><input type="text" value="{{ prop.ownership_type or '' }}"></td>
-                <td><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
+                <td data-label="اسم الفريق"><input type="text" value="{{ prop.party_name or '' }}" title="اسم الفريق" aria-label="اسم الفريق"></td>
+                <td data-label="رقم العقار"><input type="text" value="{{ prop.property_number or '' }}" title="رقم العقار" aria-label="رقم العقار"></td>
+                <td data-label="القسم"><input type="text" value="{{ prop.section or '' }}" title="القسم" aria-label="القسم"></td>
+                <td data-label="البلوك"><input type="text" value="{{ prop.block or '' }}" title="البلوك" aria-label="البلوك"></td>
+                <td data-label="المنطقة العقارية"><input type="text" value="{{ prop.real_estate_district or '' }}" title="المنطقة العقارية" aria-label="المنطقة العقارية"></td>
+                <td data-label="القضاء"><input type="text" value="{{ prop.qaza or '' }}" title="القضاء" aria-label="القضاء"></td>
+                <td data-label="عدد الأسهم"><input type="text" value="{{ prop.num_shares or '' }}" title="عدد الأسهم" aria-label="عدد الأسهم"></td>
+                <td data-label="نوع الملكية"><input type="text" value="{{ prop.ownership_type or '' }}" title="نوع الملكية" aria-label="نوع الملكية"></td>
+                <td data-label="حذف"><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -162,7 +175,8 @@
       <!-- Actions -->
       <div class="form-actions">
         <button type="button" class="btn btn-primary btn-large" onclick="confirmDocument()" id="confirmBtn">
-          ✓ تأكيد والانتقال للتالية
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          تأكيد والانتقال للتالية
         </button>
         <span class="keyboard-hint">أو اضغط Ctrl+Enter</span>
       </div>
@@ -181,15 +195,15 @@ function addRow() {
   const tbody = document.getElementById('propertiesTbody');
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><input type="text" value=""></td>
-    <td><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
+    <td data-label="اسم الفريق"><input type="text" value="" title="اسم الفريق" aria-label="اسم الفريق"></td>
+    <td data-label="رقم العقار"><input type="text" value="" title="رقم العقار" aria-label="رقم العقار"></td>
+    <td data-label="القسم"><input type="text" value="" title="القسم" aria-label="القسم"></td>
+    <td data-label="البلوك"><input type="text" value="" title="البلوك" aria-label="البلوك"></td>
+    <td data-label="المنطقة العقارية"><input type="text" value="" title="المنطقة العقارية" aria-label="المنطقة العقارية"></td>
+    <td data-label="القضاء"><input type="text" value="" title="القضاء" aria-label="القضاء"></td>
+    <td data-label="عدد الأسهم"><input type="text" value="" title="عدد الأسهم" aria-label="عدد الأسهم"></td>
+    <td data-label="نوع الملكية"><input type="text" value="" title="نوع الملكية" aria-label="نوع الملكية"></td>
+    <td data-label="حذف"><button type="button" class="btn-del" onclick="removeRow(this)">✕</button></td>
   `;
   tbody.appendChild(tr);
   tr.querySelector('input').focus();
@@ -252,25 +266,68 @@ function checkDuplicate() {
     const first = form.querySelector('[name=first_name]').value.trim();
     const father = form.querySelector('[name=father_name]').value.trim();
     const family = form.querySelector('[name=family_name]').value.trim();
-    if (!first) return;
-
-    const params = new URLSearchParams({first_name: first, father_name: father, family_name: family});
-    const res = await fetch('/api/check-duplicate?' + params);
-    const data = await res.json();
-
+    const scope = form.querySelector('[name=search_scope]').value.trim();
+    const registry = form.querySelector('[name=registry_number]').value.trim();
     const banner = document.getElementById('mergeSuggestion');
     const matchesDiv = document.getElementById('mergeMatches');
     const mergeIdInput = document.getElementById('mergePersonId');
+    const scopeNotice = document.getElementById('mergeScopeNotice');
+    const mergeRadio = form.querySelector('[name=merge_action][value=merge]');
+    const newRadio = form.querySelector('[name=merge_action][value=new]');
+
+    if (!first) {
+      banner.classList.add('hidden');
+      matchesDiv.innerHTML = '';
+      mergeIdInput.value = '';
+      mergeRadio.disabled = false;
+      scopeNotice.classList.add('hidden');
+      newRadio.checked = true;
+      return;
+    }
+
+    const params = new URLSearchParams({
+      first_name: first,
+      father_name: father,
+      family_name: family,
+      search_scope: scope,
+      registry_number: registry,
+    });
+    const res = await fetch('/api/check-duplicate?' + params);
+    const data = await res.json();
 
     if (data.matches && data.matches.length > 0) {
-      matchesDiv.innerHTML = data.matches.map(m =>
-        `<div class="merge-person" data-person-id="${m.id}">
+      const firstAllowed = data.matches.find(m => m.merge_allowed);
+      matchesDiv.innerHTML = data.matches.map(m => {
+        const status = m.registry_match
+          ? 'مطابقة رقم سجل'
+          : (m.same_scope ? 'نفس نطاق البحث' : 'نطاق مختلف');
+        const scopes = (m.search_scopes || []).length ? (m.search_scopes || []).join('، ') : 'غير محدد';
+        const safeClass = m.merge_allowed ? 'merge-person-safe' : 'merge-person-unsafe';
+        const disabledAttr = m.merge_allowed ? '' : 'data-merge-disabled="true"';
+        return `<div class="merge-person ${safeClass}" data-person-id="${m.id}" ${disabledAttr}>
           <span class="mp-name">${m.first_name} ${m.father_name||''} ${m.family_name||''}</span>
           <span class="mp-count">${m.property_count} عقار</span>
+          <span class="mp-count">${m.document_count || 0} طلب</span>
           ${m.family_origin ? '<span class="mp-count">'+m.family_origin+'</span>' : ''}
-        </div>`
-      ).join('');
-      mergeIdInput.value = data.matches[0].id;
+          <span class="mp-count">${status}</span>
+          <span class="mp-count">النطاقات: ${scopes}</span>
+        </div>`;
+      }).join('');
+
+      if (firstAllowed) {
+        mergeIdInput.value = firstAllowed.id;
+        mergeRadio.checked = true;
+        mergeRadio.disabled = false;
+        scopeNotice.textContent = 'تم تفعيل الدمج فقط للمرشحين ضمن نفس نطاق البحث أو عند تطابق رقم السجل.';
+        scopeNotice.classList.remove('hidden');
+      } else {
+        mergeIdInput.value = '';
+        newRadio.checked = true;
+        mergeRadio.disabled = true;
+        scopeNotice.textContent = 'المرشحون الموجودون يحملون الاسم نفسه لكن في نطاقات بحث مختلفة. سيتم إنشاء شخص جديد ما لم يوجد تطابق برقم السجل.';
+        scopeNotice.classList.remove('hidden');
+      }
+
       banner.classList.remove('hidden');
 
       // Click to select a match
@@ -278,19 +335,35 @@ function checkDuplicate() {
         el.addEventListener('click', () => {
           matchesDiv.querySelectorAll('.merge-person').forEach(e => e.style.outline = '');
           el.style.outline = '2px solid var(--primary)';
+          if (el.dataset.mergeDisabled === 'true') {
+            mergeIdInput.value = '';
+            newRadio.checked = true;
+            mergeRadio.disabled = true;
+            return;
+          }
           mergeIdInput.value = el.dataset.personId;
-          form.querySelector('[name=merge_action][value=merge]').checked = true;
+          mergeRadio.disabled = false;
+          mergeRadio.checked = true;
         });
       });
+
+      if (firstAllowed) {
+        const selected = matchesDiv.querySelector(`[data-person-id="${firstAllowed.id}"]`);
+        if (selected) {
+          selected.style.outline = '2px solid var(--primary)';
+        }
+      }
     } else {
       banner.classList.add('hidden');
       mergeIdInput.value = '';
+      mergeRadio.disabled = false;
+      scopeNotice.classList.add('hidden');
     }
   }, 500);
 }
 
 // Attach duplicate check to name fields
-document.querySelectorAll('[name=first_name],[name=father_name],[name=family_name]').forEach(input => {
+document.querySelectorAll('[name=first_name],[name=father_name],[name=family_name],[name=search_scope],[name=registry_number]').forEach(input => {
   input.addEventListener('blur', checkDuplicate);
 });
 // Run once on load
@@ -300,7 +373,7 @@ checkDuplicate();
 async function confirmDocument() {
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true;
-  btn.textContent = '⏳ جارٍ الحفظ...';
+  btn.textContent = 'جارٍ الحفظ...';
 
   try {
     const formData = getFormData();
@@ -321,7 +394,7 @@ async function confirmDocument() {
     if (data.ok) {
       window.location.href = data.next;
     } else {
-      alert('حدث خطأ: ' + JSON.stringify(data));
+      alert('حدث خطأ: ' + (data.detail || JSON.stringify(data)));
       btn.disabled = false;
       btn.textContent = '✓ تأكيد والانتقال للتالية';
     }

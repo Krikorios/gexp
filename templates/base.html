@@ -2,26 +2,62 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{% block title %}سجل العقارات اللبناني{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/main.css">
   {% block head %}{% endblock %}
 </head>
 <body>
+  <div class="page-backdrop" aria-hidden="true">
+    <span class="backdrop-orb orb-1"></span>
+    <span class="backdrop-orb orb-2"></span>
+  </div>
   {% block navbar %}
   <nav class="navbar">
     <div class="nav-container">
-      <a class="nav-brand" href="/">🏠 سجل العقارات</a>
-      <button class="nav-toggle" id="navToggle" aria-label="القائمة">
+      <a class="nav-brand" href="/">
+        <span class="nav-brand-mark">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21h18"/>
+            <path d="M5 21V7l7-4 7 4v14"/>
+            <path d="M9 21v-6h6v6"/>
+          </svg>
+        </span>
+        <span class="nav-brand-text">سجل العقارات</span>
+      </a>
+      <button class="nav-toggle" id="navToggle" aria-label="القائمة" aria-expanded="false" aria-controls="navLinks">
         <span></span><span></span><span></span>
       </button>
       <div class="nav-links" id="navLinks">
-        <a href="/" class="nav-link">رفع وثائق</a>
-        <a href="/review/next" class="nav-link">مراجعة</a>
-        <a href="/search" class="nav-link">بحث</a>
-        <a href="/documents" class="nav-link">قائمة الوثائق</a>
-        <a href="/auth/users" class="nav-link">الإدارة</a>
-        <a href="/auth/logout" class="nav-link">تسجيل خروج</a>
+        <a href="/" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          رفع وثائق
+        </a>
+        <a href="/review/next" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          مراجعة
+        </a>
+        <a href="/search" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          بحث
+        </a>
+        <a href="/documents" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          قائمة الوثائق
+        </a>
+        <a href="/auth/users" class="nav-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15c-4 0-7 2-7 4v1h14v-1c0-2-3-4-7-4z"/><circle cx="12" cy="8" r="4"/></svg>
+          الإدارة
+        </a>
+        <a href="/auth/logout" class="nav-link nav-link-logout">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          خروج
+        </a>
       </div>
     </div>
   </nav>
@@ -31,6 +67,33 @@
     {% block content %}{% endblock %}
   </main>
 
+  <nav class="mobile-dock" aria-label="التنقل السريع">
+    <a href="/" class="mobile-dock-link" data-match="/">
+      <span class="mobile-dock-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </span>
+      <span>رفع</span>
+    </a>
+    <a href="/review/next" class="mobile-dock-link" data-match="/review">
+      <span class="mobile-dock-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </span>
+      <span>مراجعة</span>
+    </a>
+    <a href="/search" class="mobile-dock-link" data-match="/search,/persons">
+      <span class="mobile-dock-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </span>
+      <span>بحث</span>
+    </a>
+    <a href="/documents" class="mobile-dock-link" data-match="/documents">
+      <span class="mobile-dock-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </span>
+      <span>وثائق</span>
+    </a>
+  </nav>
+
   <script>
     const navToggle = document.getElementById('navToggle');
     const navLinks = document.getElementById('navLinks');
@@ -38,8 +101,46 @@
       navToggle.addEventListener('click', () => {
         navLinks.classList.toggle('open');
         navToggle.classList.toggle('active');
+        navToggle.setAttribute('aria-expanded', String(navLinks.classList.contains('open')));
+      });
+
+      navLinks.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+          navLinks.classList.remove('open');
+          navToggle.classList.remove('active');
+          navToggle.setAttribute('aria-expanded', 'false');
+        });
       });
     }
+
+    document.addEventListener('click', event => {
+      document.querySelectorAll('.export-dropdown').forEach(dropdown => {
+        if (!dropdown.contains(event.target)) {
+          dropdown.querySelector('.export-menu')?.classList.remove('show');
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-export-toggle]').forEach(button => {
+      button.addEventListener('click', () => {
+        button.nextElementSibling?.classList.toggle('show');
+      });
+    });
+
+    const currentPath = window.location.pathname;
+    const mobileDock = document.querySelector('.mobile-dock');
+    if (currentPath.startsWith('/auth/login')) {
+      mobileDock?.setAttribute('hidden', 'hidden');
+    }
+
+    document.querySelectorAll('.mobile-dock-link').forEach(link => {
+      const patterns = (link.dataset.match || '').split(',').filter(Boolean);
+      const isRoot = patterns.includes('/') && currentPath === '/';
+      const isMatched = isRoot || patterns.some(pattern => pattern !== '/' && currentPath.startsWith(pattern));
+      if (isMatched) {
+        link.classList.add('active');
+      }
+    });
   </script>
   {% block scripts %}{% endblock %}
 </body>

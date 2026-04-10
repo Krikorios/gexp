@@ -1,5 +1,5 @@
-import sqlite3
 import hashlib
+import hmac
 import secrets
 
 def hash_password(password: str) -> str:
@@ -11,7 +11,7 @@ def verify_password(stored_password: str, provided_password: str) -> bool:
     try:
         salt, stored_hash = stored_password.split('$')
         hashed = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt.encode('utf-8'), 100000).hex()
-        return hashed == stored_hash
+        return hmac.compare_digest(hashed, stored_hash)
     except Exception:
         return False
 

@@ -5,7 +5,11 @@
 {% block content %}
 <div class="admin-container">
     <div class="page-header">
-        <h1>إدارة النظام والمستخدمين</h1>
+        <div>
+            <span class="page-kicker">الإعدادات والإدارة</span>
+            <h1>إدارة النظام والمستخدمين</h1>
+            <p class="subtitle">أنشئ نسخاً احتياطية وأدر حسابات الدخول من مكان واحد.</p>
+        </div>
     </div>
 
     {% if backup_msg %}
@@ -13,13 +17,19 @@
     {% endif %}
 
     <div class="admin-section">
-        <h3>💾 نسخ احتياطي لقاعدة البيانات</h3>
+        <h3>
+          <svg class="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          نسخ احتياطي لقاعدة البيانات
+        </h3>
         <p>قم بإنشاء نسخة احتياطية من قاعدة البيانات الحالية.</p>
         <a href="/auth/backup" class="btn btn-success">إنشاء نسخة احتياطية</a>
     </div>
 
     <div class="admin-section">
-        <h3>➕ إضافة مستخدم جديد</h3>
+        <h3>
+          <svg class="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          إضافة مستخدم جديد
+        </h3>
         <form method="post" action="/auth/users/create" class="add-user-form">
             <div class="form-group">
                 <label for="username">اسم المستخدم</label>
@@ -34,9 +44,12 @@
     </div>
 
     <div class="admin-section">
-        <h3>👥 المستخدمين</h3>
+        <h3>
+          <svg class="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          المستخدمين
+        </h3>
         <div class="table-wrapper">
-            <table class="results-table">
+            <table class="results-table responsive-table">
                 <thead>
                     <tr>
                         <th>الرقم</th>
@@ -48,11 +61,11 @@
                 <tbody>
                     {% for user in users %}
                     <tr>
-                        <td>{{ user.id }}</td>
-                        <td>{{ user.username }}</td>
-                        <td>{{ user.created_at }}</td>
-                        <td>
-                            <form method="post" action="/auth/users/delete/{{ user.id }}" onsubmit="return confirm('هل أنت متأكد من حذف هذا المستخدم؟');" style="display:inline;">
+                        <td data-label="الرقم">{{ user.id }}</td>
+                        <td data-label="اسم المستخدم">{{ user.username }}</td>
+                        <td data-label="تاريخ الإنشاء">{{ user.created_at }}</td>
+                        <td data-label="الإجراءات">
+                            <form method="post" action="/auth/users/delete/{{ user.id }}" onsubmit="return confirm('هل أنت متأكد من حذف هذا المستخدم؟');" class="inline-form">
                                 <button type="submit" class="btn btn-sm btn-danger">حذف</button>
                             </form>
                         </td>

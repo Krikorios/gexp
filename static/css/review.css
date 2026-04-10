@@ -1,25 +1,27 @@
 /* Review page — two-column sticky layout */
 .review-layout {
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 1.25rem;
+  grid-template-columns: minmax(320px, .92fr) minmax(0, 1.4fr);
+  gap: 1.4rem;
   align-items: start;
 }
 
 /* Image panel */
 .image-panel {
   position: sticky;
-  top: 70px;
-  background: #1f2937;
-  border-radius: 8px;
+  top: 88px;
+  background: linear-gradient(180deg, #1a2e38, #0f1c22);
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  box-shadow: 0 16px 48px rgba(15, 28, 34, .28);
+  border: 1px solid rgba(255,255,255,.06);
 }
 .image-toolbar {
   display: flex;
-  gap: .4rem;
-  padding: .5rem .75rem;
-  background: #111827;
+  gap: .35rem;
+  padding: .65rem .75rem;
+  background: rgba(10, 18, 22, .94);
+  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .image-container {
   overflow: auto;
@@ -27,20 +29,50 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: .5rem;
+  padding: .9rem;
+  background:
+    linear-gradient(45deg, rgba(255,255,255,.03) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.03) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,.03) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.03) 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
 }
 .doc-image {
   max-width: 100%;
   height: auto;
   display: block;
   transform-origin: top center;
-  transition: transform .2s;
-  border-radius: 4px;
+  transition: transform .2s cubic-bezier(.4,0,.2,1);
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(0,0,0,.32);
+  background: white;
 }
 
 /* Form panel */
 .form-panel {
   min-width: 0;
+}
+
+.table-wrapper-editable {
+  overflow: visible;
+}
+
+.mobile-edit-table td[data-label]::before {
+  content: attr(data-label);
+  display: none;
+}
+
+.review-title {
+  align-items: flex-start;
+}
+
+.review-title .page-kicker {
+  margin-bottom: .45rem;
+}
+
+.review-title h2 {
+  line-height: 1.35;
 }
 
 /* ============================
@@ -57,6 +89,107 @@
   .image-container {
     max-height: 50vh;
   }
+  .review-nav {
+    width: 100%;
+  }
+  .review-nav .btn {
+    flex: 1 1 calc(50% - .5rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .review-layout {
+    gap: 1rem;
+  }
+  .image-container {
+    max-height: 36vh;
+    padding: .7rem;
+  }
+  .image-toolbar {
+    padding: .65rem;
+  }
+  .review-nav .btn {
+    flex-basis: 100%;
+  }
+  .form-section {
+    padding: 1rem;
+  }
+  .table-wrapper-editable {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    margin-inline: 0;
+  }
+  .mobile-edit-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    background: transparent;
+  }
+  .mobile-edit-table thead {
+    display: none;
+  }
+  .mobile-edit-table tbody,
+  .mobile-edit-table tr,
+  .mobile-edit-table td {
+    display: block;
+    width: 100%;
+  }
+  .mobile-edit-table tr {
+    margin-bottom: .85rem;
+    padding: .85rem;
+    border: 1px solid rgba(23,37,44,.08);
+    border-radius: 18px;
+    background: rgba(255,255,255,.96);
+    box-shadow: 0 10px 24px rgba(23,37,44,.08);
+  }
+  .mobile-edit-table td {
+    padding: 0;
+    border-bottom: none;
+    margin-bottom: .65rem;
+  }
+  .mobile-edit-table td:last-child {
+    margin-bottom: 0;
+  }
+  .mobile-edit-table td[data-label]::before {
+    display: block;
+    font-size: .76rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: .25rem;
+  }
+  .mobile-edit-table input {
+    min-width: 0;
+    padding: .7rem .8rem;
+    background: rgba(248,244,236,.72);
+    border: 1px solid rgba(23,37,44,.08);
+  }
+  .mobile-edit-table td[data-label="حذف"] {
+    margin-top: .2rem;
+  }
+  .mobile-edit-table td[data-label="حذف"] .btn-del {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid #fecaca;
+    background: #fff5f5;
+    border-radius: 12px;
+  }
+  .form-actions {
+    position: sticky;
+    bottom: calc(5.4rem + env(safe-area-inset-bottom));
+    z-index: 20;
+    margin-top: 1rem;
+    padding: .85rem;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 24px rgba(23,37,44,.12);
+    background: rgba(255,255,255,.96);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    padding-bottom: calc(.85rem + env(safe-area-inset-bottom));
+  }
+  .keyboard-hint {
+    text-align: center;
+    width: 100%;
+  }
 }
 
 @media (max-width: 480px) {
@@ -65,5 +198,8 @@
   }
   .image-toolbar {
     justify-content: center;
+  }
+  .image-panel {
+    border-radius: 18px;
   }
 }

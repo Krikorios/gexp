@@ -1,17 +1,19 @@
 import json
 import asyncio
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import UPLOAD_DIR
 from database.connection import get_db
 from services.extractor import extract_document
-from services.search_service import normalize_arabic
+from services.search_service import normalize_arabic, _normalize_scope
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+
+REVIEWABLE_DOCUMENT_STATUSES = {"extracted", "confirmed", "error"}
 
 
 def _get_document(doc_id: int) -> dict | None:
@@ -41,6 +43,98 @@ def _get_document(doc_id: int) -> dict | None:
             doc["person"] = {}
 
     return doc
+
+
+def _parse_optional_bool(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off", ""}:
+        return False
+    return None
+
+
+def _get_merge_candidates(
+    first_name: str,
+    father_name: str = "",
+    family_name: str = "",
+    search_scope: str = "",
+    registry_number: str = "",
+) -> list[dict]:
+    if not first_name:
+        return []
+
+    first_norm = normalize_arabic(first_name.strip())
+    family_norm = normalize_arabic(family_name.strip()) if family_name else ""
+    normalized_scope = _normalize_scope(search_scope)
+    normalized_registry = (registry_number or "").strip()
+
+    with get_db() as conn:
+        if family_norm:
+            rows = conn.execute(
+                """SELECT p.*,
+                          COUNT(DISTINCT pr.id) AS property_count,
+                          COUNT(DISTINCT d.id) AS document_count,
+                          GROUP_CONCAT(DISTINCT NULLIF(TRIM(d.search_scope), '')) AS search_scopes
+                   FROM persons p
+                   LEFT JOIN documents d ON d.person_id = p.id
+                   LEFT JOIN properties pr ON pr.person_id = p.id
+                   WHERE p.first_name_norm = ? AND p.family_name_norm = ?
+                   GROUP BY p.id""",
+                (first_norm, family_norm),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT p.*,
+                          COUNT(DISTINCT pr.id) AS property_count,
+                          COUNT(DISTINCT d.id) AS document_count,
+                          GROUP_CONCAT(DISTINCT NULLIF(TRIM(d.search_scope), '')) AS search_scopes
+                   FROM persons p
+                   LEFT JOIN documents d ON d.person_id = p.id
+                   LEFT JOIN properties pr ON pr.person_id = p.id
+                   WHERE p.first_name_norm = ?
+                   GROUP BY p.id""",
+                (first_norm,),
+            ).fetchall()
+
+    matches = []
+    normalized_father = normalize_arabic(father_name.strip()) if father_name else ""
+    for row in rows:
+        person = dict(row)
+        if normalized_father and person.get("father_name"):
+            if normalize_arabic(person["father_name"]) != normalized_father:
+                continue
+        scope_values = [scope.strip() for scope in (person.get("search_scopes") or "").split(",") if scope.strip()]
+        same_scope = bool(normalized_scope and normalized_scope in scope_values)
+        registry_match = bool(
+            normalized_registry
+            and person.get("registry_number")
+            and person["registry_number"].strip() == normalized_registry
+        )
+        person["search_scope_list"] = scope_values
+        person["same_scope"] = same_scope
+        person["registry_match"] = registry_match
+        person["merge_allowed"] = same_scope or registry_match
+        matches.append(person)
+
+    matches.sort(
+        key=lambda person: (
+            0 if person.get("merge_allowed") else 1,
+            0 if person.get("same_scope") else 1,
+            0 if person.get("registry_match") else 1,
+            -(person.get("document_count") or 0),
+            -(person.get("property_count") or 0),
+            person.get("id") or 0,
+        )
+    )
+    return matches
 
 
 @router.get("/review/next")
@@ -100,49 +194,34 @@ async def check_duplicate(
     first_name: str = "",
     father_name: str = "",
     family_name: str = "",
+    search_scope: str = "",
+    registry_number: str = "",
 ):
     """Check if a person with similar name already exists. Called via AJAX from review page."""
     if not first_name:
         return JSONResponse({"matches": []})
 
-    first_norm = normalize_arabic(first_name.strip())
-    family_norm = normalize_arabic(family_name.strip()) if family_name else ""
-
-    with get_db() as conn:
-        if family_norm:
-            rows = conn.execute(
-                """SELECT p.*, COUNT(DISTINCT pr.id) AS property_count
-                   FROM persons p
-                   LEFT JOIN properties pr ON pr.person_id = p.id
-                   WHERE p.first_name_norm = ? AND p.family_name_norm = ?
-                   GROUP BY p.id""",
-                (first_norm, family_norm),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """SELECT p.*, COUNT(DISTINCT pr.id) AS property_count
-                   FROM persons p
-                   LEFT JOIN properties pr ON pr.person_id = p.id
-                   WHERE p.first_name_norm = ?
-                   GROUP BY p.id""",
-                (first_norm,),
-            ).fetchall()
-
-        # Further filter by father_name if provided
-        matches = []
-        for r in rows:
-            d = dict(r)
-            if father_name and d.get("father_name"):
-                if normalize_arabic(father_name.strip()) != normalize_arabic(d["father_name"]):
-                    continue
-            matches.append({
-                "id": d["id"],
-                "first_name": d["first_name"],
-                "father_name": d.get("father_name"),
-                "family_name": d.get("family_name"),
-                "family_origin": d.get("family_origin"),
-                "property_count": d["property_count"],
-            })
+    matches = []
+    for candidate in _get_merge_candidates(
+        first_name,
+        father_name,
+        family_name,
+        search_scope,
+        registry_number,
+    ):
+        matches.append({
+            "id": candidate["id"],
+            "first_name": candidate["first_name"],
+            "father_name": candidate.get("father_name"),
+            "family_name": candidate.get("family_name"),
+            "family_origin": candidate.get("family_origin"),
+            "property_count": candidate.get("property_count", 0),
+            "document_count": candidate.get("document_count", 0),
+            "search_scopes": candidate.get("search_scope_list", []),
+            "same_scope": candidate.get("same_scope", False),
+            "registry_match": candidate.get("registry_match", False),
+            "merge_allowed": candidate.get("merge_allowed", False),
+        })
 
     return JSONResponse({"matches": matches})
 
@@ -155,34 +234,104 @@ async def confirm_document(doc_id: int, request: Request):
     properties_data = body.get("properties", [])
     merge_person_id = body.get("merge_person_id")  # If user chose to merge
 
-    first_name = (person_data.get("first_name") or "").strip()
-    registry_number = (person_data.get("registry_number") or "").strip() or None
-    
-    # We should update document fields as well since user might have edited them
-    request_number = (body.get("request_number") or "").strip() or None
-    request_date = (body.get("request_date") or "").strip() or None
-    page_info = (body.get("page_info") or "").strip() or None
-    search_scope = (body.get("search_scope") or "").strip() or None
-    request_purpose = (body.get("request_purpose") or "").strip() or None
-    data_valid_until = (body.get("data_valid_until") or "").strip() or None
-    registry_office = (body.get("registry_office") or "").strip() or None
-    owns_properties = body.get("owns_properties")
-    if owns_properties is not None:
-        owns_properties = bool(owns_properties)
-    declared_property_count = body.get("declared_property_count")
-    if declared_property_count is not None:
-        try:
-            declared_property_count = int(declared_property_count)
-        except ValueError:
-            declared_property_count = None
+    if not isinstance(person_data, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid person payload")
+    if not isinstance(properties_data, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid properties payload")
 
+    first_name = (person_data.get("first_name") or "").strip()
+    if not first_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
+
+    registry_number = (person_data.get("registry_number") or "").strip() or None
 
     with get_db() as conn:
+        current_doc = conn.execute(
+            "SELECT * FROM documents WHERE id=?",
+            (doc_id,),
+        ).fetchone()
+        if not current_doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+        current_doc = dict(current_doc)
+        if current_doc["status"] == "pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document is still being processed",
+            )
+        if current_doc["status"] not in REVIEWABLE_DOCUMENT_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Document status '{current_doc['status']}' cannot be confirmed",
+            )
+
+        def _body_or_existing(field_name: str):
+            if field_name in body:
+                value = body.get(field_name)
+                if isinstance(value, str):
+                    value = value.strip()
+                return value or None
+            return current_doc.get(field_name)
+
+        request_number = _body_or_existing("request_number")
+        request_date = _body_or_existing("request_date")
+        page_info = _body_or_existing("page_info")
+        search_scope = _body_or_existing("search_scope")
+        request_purpose = _body_or_existing("request_purpose")
+        data_valid_until = _body_or_existing("data_valid_until")
+        registry_office = _body_or_existing("registry_office")
+        normalized_search_scope = _normalize_scope(search_scope) or ""
+
+        if "owns_properties" in body:
+            owns_properties = _parse_optional_bool(body.get("owns_properties"))
+        else:
+            owns_properties = current_doc.get("owns_properties")
+
+        if "declared_property_count" in body:
+            declared_property_count = body.get("declared_property_count")
+            if declared_property_count is not None and str(declared_property_count).strip() != "":
+                try:
+                    declared_property_count = int(declared_property_count)
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid declared property count",
+                    )
+            else:
+                declared_property_count = None
+        else:
+            declared_property_count = current_doc.get("declared_property_count")
+
         person_id = None
 
         # Option 1: User explicitly chose to merge with an existing person
         if merge_person_id:
-            person_id = int(merge_person_id)
+            try:
+                person_id = int(merge_person_id)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid merge target")
+
+            existing_person = conn.execute(
+                "SELECT * FROM persons WHERE id=?",
+                (person_id,),
+            ).fetchone()
+            if not existing_person:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Merge target not found")
+
+            allowed_merge_ids = {candidate["id"] for candidate in _get_merge_candidates(
+                first_name,
+                person_data.get("father_name") or "",
+                person_data.get("family_name") or "",
+                normalized_search_scope,
+                registry_number or "",
+            ) if candidate.get("merge_allowed")}
+
+            if person_id not in allowed_merge_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Merge target is not a verified match for this search scope",
+                )
+
             # Update person info with latest data
             conn.execute(
                 """UPDATE persons SET
@@ -241,31 +390,66 @@ async def confirm_document(doc_id: int, request: Request):
 
         # Option 3: Create new person
         if not person_id:
-            cursor = conn.execute(
-                """INSERT INTO persons
-                   (first_name, father_name, mother_name, family_name, family_origin,
-                    nationality, birth_date, registry_number, registry_place,
-                    first_name_norm, family_name_norm)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    first_name,
-                    person_data.get("father_name"),
-                    person_data.get("mother_name"),
-                    person_data.get("family_name"),
-                    person_data.get("family_origin"),
-                    person_data.get("nationality"),
-                    person_data.get("birth_date"),
-                    registry_number,
-                    person_data.get("registry_place"),
-                    normalize_arabic(first_name),
-                    normalize_arabic(person_data.get("family_name") or ""),
-                ),
-            )
-            person_id = cursor.lastrowid
+            existing_person = None
+            if current_doc.get("person_id"):
+                existing_person = conn.execute(
+                    "SELECT id FROM persons WHERE id=?",
+                    (current_doc["person_id"],),
+                ).fetchone()
+
+            if existing_person:
+                person_id = existing_person["id"]
+                conn.execute(
+                    """UPDATE persons SET
+                       first_name=?, father_name=?, mother_name=?,
+                       family_name=?, family_origin=?, nationality=?,
+                       birth_date=?, registry_number=?, registry_place=?,
+                       first_name_norm=?, family_name_norm=?,
+                       updated_at=CURRENT_TIMESTAMP
+                       WHERE id=?""",
+                    (
+                        first_name,
+                        person_data.get("father_name"),
+                        person_data.get("mother_name"),
+                        person_data.get("family_name"),
+                        person_data.get("family_origin"),
+                        person_data.get("nationality"),
+                        person_data.get("birth_date"),
+                        registry_number,
+                        person_data.get("registry_place"),
+                        normalize_arabic(first_name),
+                        normalize_arabic(person_data.get("family_name") or ""),
+                        person_id,
+                    ),
+                )
+            else:
+                cursor = conn.execute(
+                    """INSERT INTO persons
+                       (first_name, father_name, mother_name, family_name, family_origin,
+                        nationality, birth_date, registry_number, registry_place,
+                        first_name_norm, family_name_norm)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        first_name,
+                        person_data.get("father_name"),
+                        person_data.get("mother_name"),
+                        person_data.get("family_name"),
+                        person_data.get("family_origin"),
+                        person_data.get("nationality"),
+                        person_data.get("birth_date"),
+                        registry_number,
+                        person_data.get("registry_place"),
+                        normalize_arabic(first_name),
+                        normalize_arabic(person_data.get("family_name") or ""),
+                    ),
+                )
+                person_id = cursor.lastrowid
 
         # Replace properties for this document
         conn.execute("DELETE FROM properties WHERE document_id=?", (doc_id,))
         for i, prop in enumerate(properties_data):
+            if not isinstance(prop, dict):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid property payload")
             conn.execute(
                 """INSERT INTO properties
                    (document_id, person_id, row_order, party_name, property_number,

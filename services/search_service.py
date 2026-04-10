@@ -12,37 +12,53 @@ def normalize_arabic(text: str) -> str:
     return text
 
 
+def _normalize_scope(text: str | None) -> str | None:
+    if text is None:
+        return None
+    normalized = text.strip()
+    return normalized or None
+
+
 def search_persons(query: str) -> list[dict]:
-    """Search persons by name (first, family, or father name)."""
+    """Search persons by name, keeping separate result rows per search scope."""
     norm = normalize_arabic(query.strip())
     pattern = f"%{norm}%"
     raw_pattern = f"%{query.strip()}%"
+    scope_expr = "COALESCE(NULLIF(TRIM(d.search_scope), ''), '')"
 
     with get_db() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT p.*,
+                   {scope_expr} AS search_scope,
                    COUNT(DISTINCT pr.id) AS property_count,
-                   COUNT(DISTINCT d.id) AS document_count,
-                   GROUP_CONCAT(DISTINCT d.search_scope) AS search_scopes
+                   COUNT(DISTINCT d.id) AS document_count
             FROM persons p
-            LEFT JOIN properties pr ON pr.person_id = p.id
             LEFT JOIN documents d ON d.person_id = p.id
+            LEFT JOIN properties pr ON pr.document_id = d.id
             WHERE p.first_name_norm LIKE ?
                OR p.family_name_norm LIKE ?
                OR p.father_name LIKE ?
                OR p.first_name LIKE ?
                OR p.family_name LIKE ?
-            GROUP BY p.id
+            GROUP BY p.id, {scope_expr}
             ORDER BY
                 CASE WHEN p.first_name_norm = ? THEN 0
                      WHEN p.family_name_norm = ? THEN 0
                      ELSE 1 END,
-                p.first_name
+                p.first_name,
+                p.family_name,
+                search_scope
             """,
             (pattern, pattern, raw_pattern, raw_pattern, raw_pattern, norm, norm),
         ).fetchall()
-    return [dict(r) for r in rows]
+
+    results = []
+    for row in rows:
+        person = dict(row)
+        person["search_scope"] = _normalize_scope(person.get("search_scope"))
+        results.append(person)
+    return results
 
 
 def search_properties(
@@ -94,8 +110,9 @@ def search_properties(
     return results
 
 
-def get_person_with_properties(person_id: int) -> dict | None:
-    """Fetch a person and all their properties."""
+def get_person_with_properties(person_id: int, search_scope: str | None = None) -> dict | None:
+    """Fetch a person and all their properties, optionally filtered by search scope."""
+    normalized_scope = _normalize_scope(search_scope)
     with get_db() as conn:
         person = conn.execute(
             "SELECT * FROM persons WHERE id = ?", (person_id,)
@@ -103,21 +120,25 @@ def get_person_with_properties(person_id: int) -> dict | None:
         if not person:
             return None
 
-        props = conn.execute(
-            """
+        props_query = """
             SELECT pr.*, d.image_path, d.id AS document_id, d.search_scope
             FROM properties pr
             LEFT JOIN documents d ON d.id = pr.document_id
             WHERE pr.person_id = ?
-            ORDER BY pr.real_estate_district, pr.row_order
-            """,
-            (person_id,),
-        ).fetchall()
+        """
+        props_params = [person_id]
+        if normalized_scope:
+            props_query += " AND COALESCE(NULLIF(TRIM(d.search_scope), ''), '') = ?"
+            props_params.append(normalized_scope)
+        props_query += " ORDER BY pr.real_estate_district, pr.row_order"
+        props = conn.execute(props_query, props_params).fetchall()
 
-        docs = conn.execute(
-            "SELECT id, image_path, request_number, request_date, status, page_info, search_scope FROM documents WHERE person_id = ?",
-            (person_id,),
-        ).fetchall()
+        docs_query = "SELECT id, image_path, request_number, request_date, status, page_info, search_scope FROM documents WHERE person_id = ?"
+        docs_params = [person_id]
+        if normalized_scope:
+            docs_query += " AND COALESCE(NULLIF(TRIM(search_scope), ''), '') = ?"
+            docs_params.append(normalized_scope)
+        docs = conn.execute(docs_query, docs_params).fetchall()
 
     properties_list = []
     doc_ids_with_props = set()
@@ -149,4 +170,5 @@ def get_person_with_properties(person_id: int) -> dict | None:
         "person": dict(person),
         "properties": properties_list,
         "documents": docs_list,
+        "current_search_scope": normalized_scope,
     }

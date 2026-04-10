@@ -32,7 +32,10 @@ async def search(
 
     # If exactly one person found, preload their full details
     if len(persons) == 1 and not properties:
-        selected_person = get_person_with_properties(persons[0]["id"])
+        selected_person = get_person_with_properties(
+            persons[0]["id"],
+            persons[0].get("search_scope"),
+        )
 
     return templates.TemplateResponse(
         request,
@@ -50,8 +53,8 @@ async def search(
 
 
 @router.get("/persons/{person_id}")
-async def person_detail(request: Request, person_id: int):
-    data = get_person_with_properties(person_id)
+async def person_detail(request: Request, person_id: int, search_scope: str = ""):
+    data = get_person_with_properties(person_id, search_scope.strip() or None)
     if not data:
         return templates.TemplateResponse(
             request,
@@ -71,15 +74,12 @@ async def person_export_csv(person_id: int, qaza: str = ""):
     import io
     import csv
     
-    data = get_person_with_properties(person_id)
+    data = get_person_with_properties(person_id, qaza.strip() or None)
     if not data:
         return Response("Person not found", status_code=404)
         
     person = data["person"]
     properties = data["properties"]
-    
-    if qaza:
-        properties = [p for p in properties if (p.get("search_scope") or p.get("qaza") or "").strip() == qaza.strip()]
     
     output = io.StringIO()
     # Write BOM for Excel to open Arabic UTF-8 correctly

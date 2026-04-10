@@ -70,11 +70,14 @@ async def users_list(request: Request, _=Depends(get_current_user)):
     return templates.TemplateResponse(request=request, name="users.html", context={"users": users})
 
 @router.post("/users/create")
-async def add_user(username: str = Form(...), password: str = Form(...), _=Depends(get_current_user)):
-    try:
-        create_user(username, password)
-    except Exception:
-        pass # Probably duplicate
+async def add_user(request: Request, username: str = Form(...), password: str = Form(...), _=Depends(get_current_user)):
+    if len(password) < 8:
+        users = get_all_users()
+        return templates.TemplateResponse(request=request, name="users.html", context={"users": users, "error": "Password must be at least 8 characters."})
+    if get_user_by_username(username):
+        users = get_all_users()
+        return templates.TemplateResponse(request=request, name="users.html", context={"users": users, "error": f"User '{username}' already exists."})
+    create_user(username, password)
     return RedirectResponse(url="/auth/users", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/users/delete/{user_id}")

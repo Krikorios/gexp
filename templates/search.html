@@ -3,21 +3,36 @@
 
 {% block content %}
 <div class="page-header">
-  <h1>البحث في قاعدة البيانات</h1>
+  <div>
+    <span class="page-kicker">البحث والاستكشاف</span>
+    <h1>البحث في قاعدة البيانات</h1>
+    <p class="subtitle">اختر طريقة البحث المناسبة ثم انتقل مباشرة إلى سجل الشخص أو العقار المطلوب.</p>
+  </div>
+  {% if persons or properties %}
+  <div class="header-actions no-print">
+    <button type="button" class="btn btn-secondary" onclick="window.print()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      طباعة
+    </button>
+  </div>
+  {% endif %}
 </div>
 
-<div class="search-card">
+<div class="search-card no-print">
   <form method="get" action="/search" id="searchForm">
     <div class="search-tabs">
-      <button type="button" class="tab-btn active" onclick="showTab('person')">بحث بالاسم</button>
-      <button type="button" class="tab-btn" onclick="showTab('property')">بحث بالعقار</button>
+      <button type="button" class="tab-btn active" data-tab="person">بحث بالاسم</button>
+      <button type="button" class="tab-btn" data-tab="property">بحث بالعقار</button>
     </div>
 
     <div id="tab-person" class="tab-content">
       <div class="search-row">
         <input type="text" name="q" id="qInput" value="{{ q }}"
                placeholder="اكتب اسم الشخص..." class="search-input" autocomplete="off">
-        <button type="submit" class="btn btn-primary">🔍 بحث</button>
+        <button type="submit" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          بحث
+        </button>
       </div>
     </div>
 
@@ -36,7 +51,10 @@
           <input type="text" name="block" value="{{ block }}" placeholder="رقم البلوك">
         </div>
       </div>
-      <button type="submit" class="btn btn-primary">🔍 بحث</button>
+      <button type="submit" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        بحث
+      </button>
     </div>
   </form>
 </div>
@@ -61,16 +79,23 @@
         {% set scopes = selected_person.documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
         {% if scopes %}<div class="info-item"><span class="info-label">القضاء</span><span>{{ scopes | join('، ') }}</span></div>{% endif %}
       </div>
-      <div style="margin-top:1rem">
-        <a href="/persons/{{ selected_person.person.id }}" class="btn btn-secondary">عرض التفاصيل كاملة</a>
+      <div class="person-actions">
+        <a href="/persons/{{ selected_person.person.id }}{% if selected_person.current_search_scope %}?search_scope={{ selected_person.current_search_scope|urlencode }}{% endif %}" class="btn btn-secondary no-print">عرض التفاصيل كاملة</a>
+        <button type="button" class="btn btn-secondary no-print" onclick="window.print()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          طباعة
+        </button>
         {% set scopes = selected_person.documents | selectattr('search_scope') | map(attribute='search_scope') | unique | list %}
-        <div class="export-dropdown">
-          <button class="btn btn-primary" onclick="this.nextElementSibling.classList.toggle('show')">📥 تصدير كملف إكسل ▾</button>
+        <div class="export-dropdown no-print">
+          <button type="button" class="btn btn-primary" data-export-toggle>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            تصدير كملف إكسل ▾
+          </button>
           <div class="export-menu">
-            <a href="/persons/{{ selected_person.person.id }}/export" class="export-option" download>📥 تصدير الكل</a>
+            <a href="/persons/{{ selected_person.person.id }}/export" class="export-option" download>تصدير الكل</a>
             {% for scope in scopes %}
               {% if scope %}
-              <a href="/persons/{{ selected_person.person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download>📥 {{ scope }}</a>
+              <a href="/persons/{{ selected_person.person.id }}/export?qaza={{ scope|urlencode }}" class="export-option" download>{{ scope }}</a>
               {% endif %}
             {% endfor %}
           </div>
@@ -79,8 +104,8 @@
     </div>
 
     {% if selected_person.properties %}
-    <div class="table-wrapper" style="margin-top:1rem">
-      <table class="results-table">
+    <div class="table-wrapper table-wrapper-spaced">
+      <table class="results-table responsive-table">
         <thead>
           <tr>
             <th>#</th>
@@ -96,42 +121,41 @@
         </thead>
         <tbody>
           {% for pr in selected_person.properties %}
-          <tr {% if pr.ownership_type == 'لا يملك' %}style="background-color: #fff3f3; color: #dc3545; font-weight: bold;"{% endif %}>
-            <td>{{ loop.index }}</td>
-            <td>{{ pr.party_name or '' }}</td>
-            <td>{{ pr.property_number or '' }}</td>
-            <td>{{ pr.section or '' }}</td>
-            <td>{{ pr.block or '' }}</td>
-            <td>{{ pr.real_estate_district or '' }}</td>
-            <td>{{ pr.qaza or '' }}</td>
-            <td>{{ pr.num_shares or '' }}</td>
-            <td>{{ pr.ownership_type or '' }}</td>
+          <tr class="{{ 'ownership-alert' if pr.ownership_type == 'لا يملك' else '' }}">
+            <td data-label="#">{{ loop.index }}</td>
+            <td data-label="اسم الفريق">{{ pr.party_name or '' }}</td>
+            <td data-label="رقم العقار">{{ pr.property_number or '' }}</td>
+            <td data-label="القسم">{{ pr.section or '' }}</td>
+            <td data-label="البلوك">{{ pr.block or '' }}</td>
+            <td data-label="المنطقة العقارية">{{ pr.real_estate_district or '' }}</td>
+            <td data-label="القضاء">{{ pr.qaza or '' }}</td>
+            <td data-label="عدد الأسهم">{{ pr.num_shares or '' }}</td>
+            <td data-label="نوع الملكية">{{ pr.ownership_type or '' }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="error-banner" style="margin-top:1rem; justify-content:center;">
+    <div class="error-banner centered-banner banner-spaced">
       ⚠️ نتيجة البحث: لا يملك أي عقار في القضاء المذكور.
     </div>
     {% endif %}
   {% else %}
     <div class="persons-grid">
       {% for p in persons %}
-      <a href="/persons/{{ p.id }}" class="person-card">
+      <a href="/persons/{{ p.id }}{% if p.search_scope %}?search_scope={{ p.search_scope|urlencode }}{% endif %}" class="person-card">
         <div class="person-name">{{ p.first_name }} {{ p.father_name or '' }} {{ p.family_name or '' }}</div>
         <div class="person-meta">
           {% if p.family_origin %}{{ p.family_origin }} · {% endif %}
           {% if p.property_count > 0 %}
           {{ p.property_count }} عقار
           {% else %}
-          <span style="color: #dc3545; font-weight: bold;">لا يملك عقارات</span>
+          <span class="person-meta-alert">لا يملك عقارات</span>
           {% endif %}
         </div>
-        {% if p.search_scopes %}
-        <div class="person-reg">نطاق البحث: {{ p.search_scopes | replace(',', '، ') }}</div>
-        {% endif %}
+        <div class="person-reg">نطاق البحث: {{ p.search_scope or 'غير محدد' }}</div>
+        {% if p.document_count %}<div class="person-reg">عدد الطلبات: {{ p.document_count }}</div>{% endif %}
         {% if p.registry_number %}
         <div class="person-reg">سجل: {{ p.registry_number }}</div>
         {% endif %}
@@ -147,7 +171,7 @@
 <div class="results-section">
   <h2>نتائج البحث بالعقار ({{ properties|length }} سجل)</h2>
   <div class="table-wrapper">
-    <table class="results-table">
+    <table class="results-table responsive-table">
       <thead>
         <tr>
           <th>المالك</th>
@@ -164,19 +188,19 @@
       <tbody>
         {% for pr in properties %}
         <tr>
-          <td>
+          <td data-label="المالك">
             {% if pr.person_id %}
             <a href="/persons/{{ pr.person_id }}">{{ pr.first_name or '' }} {{ pr.family_name or '' }}</a>
             {% else %}—{% endif %}
           </td>
-          <td>{{ pr.party_name or '' }}</td>
-          <td class="prop-num">{{ pr.property_number or '' }}</td>
-          <td>{{ pr.section or '' }}</td>
-          <td>{{ pr.block or '' }}</td>
-          <td>{{ pr.real_estate_district or '' }}</td>
-          <td>{{ pr.qaza or '' }}</td>
-          <td>{{ pr.num_shares or '' }}</td>
-          <td>{{ pr.ownership_type or '' }}</td>
+          <td data-label="اسم الفريق">{{ pr.party_name or '' }}</td>
+          <td data-label="رقم العقار" class="prop-num">{{ pr.property_number or '' }}</td>
+          <td data-label="القسم">{{ pr.section or '' }}</td>
+          <td data-label="البلوك">{{ pr.block or '' }}</td>
+          <td data-label="المنطقة العقارية">{{ pr.real_estate_district or '' }}</td>
+          <td data-label="القضاء">{{ pr.qaza or '' }}</td>
+          <td data-label="عدد الأسهم">{{ pr.num_shares or '' }}</td>
+          <td data-label="نوع الملكية">{{ pr.ownership_type or '' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -196,35 +220,29 @@
 
 {% block scripts %}
 <script>
-function showTab(tab) {
+function showTab(tab, button = null) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.remove('hidden');
-  event.target.classList.add('active');
+  if (button) {
+    button.classList.add('active');
+  }
 }
-
-// Export dropdown toggle
-document.addEventListener('click', function(e) {
-  document.querySelectorAll('.export-menu').forEach(function(menu) {
-    if (!menu.parentElement.contains(e.target)) {
-      menu.classList.remove('show');
-    }
-  });
-});
-
-// CSS for show class
-var style = document.createElement('style');
-style.textContent = '.export-menu.show { display: block !important; } .export-option:hover { background-color: #f0f0f0; }';
-document.head.appendChild(style);
 
 // Auto-select correct tab based on query params
 window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab-btn').forEach(button => {
+    button.addEventListener('click', () => showTab(button.dataset.tab, button));
+  });
+
   const params = new URLSearchParams(location.search);
+  const personButton = document.querySelector('.tab-btn[data-tab="person"]');
+  const propertyButton = document.querySelector('.tab-btn[data-tab="property"]');
+
   if (params.get('property_number') || params.get('district') || params.get('block')) {
-    showTab('property');
-    document.querySelectorAll('.tab-btn')[1].classList.add('active');
-    document.querySelectorAll('.tab-btn')[0].classList.remove('active');
+    showTab('property', propertyButton);
   } else {
+    showTab('person', personButton);
     document.getElementById('qInput').focus();
   }
 });
