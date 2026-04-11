@@ -74,6 +74,57 @@
   </form>
 </div>
 
+<!-- ─── Two-step: Stage pictures then process ─── -->
+<div class="upload-card" id="stagingCard">
+  <div class="card-heading">
+    <div>
+      <h2>التقاط صور ثم معالجة دفعة واحدة</h2>
+      <p>التقط أو أضف صوراً واحدة تلو الأخرى، ثم اضغط على «معالجة الكل» عند الانتهاء.</p>
+    </div>
+  </div>
+
+  <div class="stage-controls">
+    <input type="file" id="stageFileInput" accept=".jpg,.jpeg,.png,.webp,.pdf" capture="environment" class="file-input">
+    <label for="stageFileInput" class="btn btn-secondary btn-large stage-capture-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      التقط صورة / أضف ملف
+    </label>
+    <input type="file" id="stageMultiInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
+    <label for="stageMultiInput" class="btn btn-secondary btn-large">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      اختر عدة ملفات
+    </label>
+  </div>
+
+  <div id="stagingGallery" class="staging-gallery hidden"></div>
+  <div id="stagingCount" class="staging-count hidden"></div>
+
+  <div id="stagingActions" class="upload-actions hidden">
+    <div class="provider-section">
+      <label class="provider-label">محرك الاستخراج:</label>
+      <div class="provider-options">
+        {% for p in providers %}
+        <label class="provider-option">
+          <input type="radio" name="stage_provider" value="{{ p.id }}"
+                 {{ 'checked' if p.id == default_provider else '' }}>
+          <span class="provider-card {{ 'provider-free' if p.id == 'easyocr' else 'provider-ai' }}">
+            <span class="provider-name">{{ p.name }}</span>
+            <span class="provider-model">{{ p.model }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="stage-action-buttons">
+      <button type="button" class="btn btn-primary btn-large" id="processAllBtn" onclick="processStaged()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        معالجة الكل
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="clearStaged()">مسح الكل</button>
+    </div>
+  </div>
+</div>
+
 <div class="quick-links">
   <a href="/search" class="quick-link-card">
     <span class="ql-icon">
@@ -141,5 +192,113 @@ document.getElementById('uploadForm').addEventListener('submit', function() {
   document.querySelector('.btn-primary').textContent = 'جارٍ الرفع...';
   document.querySelector('.btn-primary').disabled = true;
 });
+
+// ─── Staging workflow ─────────────────────────────────────────
+const stagedItems = []; // {id, image_path, name}
+
+async function stageFiles(fileInputEl) {
+  const files = fileInputEl.files;
+  if (!files.length) return;
+
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append('files', file);
+
+    const thumb = addStagingPlaceholder(file.name);
+
+    try {
+      const res = await fetch('/upload/stage', { method: 'POST', body: formData });
+      const data = await res.json();
+      for (const item of data.staged) {
+        stagedItems.push(item);
+        updateStagingThumb(thumb, item);
+      }
+    } catch (e) {
+      thumb.remove();
+      alert('خطأ في رفع الملف: ' + file.name);
+    }
+  }
+
+  fileInputEl.value = '';
+  refreshStagingUI();
+}
+
+function addStagingPlaceholder(name) {
+  const gallery = document.getElementById('stagingGallery');
+  gallery.classList.remove('hidden');
+  const div = document.createElement('div');
+  div.className = 'staging-thumb loading';
+  div.innerHTML = `<div class="staging-thumb-spinner"></div><span class="staging-thumb-name">${name}</span>`;
+  gallery.appendChild(div);
+  return div;
+}
+
+function updateStagingThumb(thumb, item) {
+  thumb.classList.remove('loading');
+  thumb.dataset.id = item.id;
+  thumb.innerHTML = `
+    <img src="/uploads/${item.image_path}" alt="${item.name}">
+    <span class="staging-thumb-name">${item.name}</span>
+    <button type="button" class="staging-remove" onclick="removeStagedItem(${item.id}, this)" title="إزالة">&times;</button>
+  `;
+}
+
+async function removeStagedItem(id, btn) {
+  const thumb = btn.closest('.staging-thumb');
+  thumb.classList.add('removing');
+  try {
+    await fetch('/upload/staged/' + id, { method: 'DELETE' });
+  } catch (e) { /* ignore */ }
+  const idx = stagedItems.findIndex(s => s.id === id);
+  if (idx !== -1) stagedItems.splice(idx, 1);
+  thumb.remove();
+  refreshStagingUI();
+}
+
+function refreshStagingUI() {
+  const count = stagedItems.length;
+  const countEl = document.getElementById('stagingCount');
+  const actionsEl = document.getElementById('stagingActions');
+  const gallery = document.getElementById('stagingGallery');
+
+  if (count > 0) {
+    countEl.textContent = `${count} صورة جاهزة للمعالجة`;
+    countEl.classList.remove('hidden');
+    actionsEl.classList.remove('hidden');
+  } else {
+    countEl.classList.add('hidden');
+    actionsEl.classList.add('hidden');
+    gallery.classList.add('hidden');
+  }
+}
+
+async function processStaged() {
+  if (!stagedItems.length) return;
+  const ids = stagedItems.map(s => s.id).join(',');
+  const provider = document.querySelector('input[name="stage_provider"]:checked')?.value || '';
+
+  const btn = document.getElementById('processAllBtn');
+  btn.textContent = 'جارٍ المعالجة...';
+  btn.disabled = true;
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/upload/process-staged';
+  form.innerHTML = `<input type="hidden" name="doc_ids" value="${ids}"><input type="hidden" name="provider" value="${provider}">`;
+  document.body.appendChild(form);
+  form.submit();
+}
+
+async function clearStaged() {
+  for (const item of [...stagedItems]) {
+    try { await fetch('/upload/staged/' + item.id, { method: 'DELETE' }); } catch(e) {}
+  }
+  stagedItems.length = 0;
+  document.getElementById('stagingGallery').innerHTML = '';
+  refreshStagingUI();
+}
+
+document.getElementById('stageFileInput').addEventListener('change', function() { stageFiles(this); });
+document.getElementById('stageMultiInput').addEventListener('change', function() { stageFiles(this); });
 </script>
 {% endblock %}

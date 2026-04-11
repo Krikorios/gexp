@@ -42,6 +42,47 @@ def _get_document(doc_id: int) -> dict | None:
         else:
             doc["person"] = {}
 
+        # For multi-page PDFs (page 2+), inherit person info & doc fields from page 1
+        doc["inherited_from_page1"] = False
+        if doc.get("pdf_group_id") and (doc.get("page_number") or 0) > 1:
+            page1 = conn.execute(
+                """SELECT * FROM documents
+                   WHERE pdf_group_id=? AND page_number=1""",
+                (doc["pdf_group_id"],),
+            ).fetchone()
+            if page1:
+                page1 = dict(page1)
+                # Inherit person data if current page has no name
+                current_first = (doc["person"].get("first_name") or "").strip()
+                if not current_first:
+                    if page1.get("person_id"):
+                        person = conn.execute(
+                            "SELECT * FROM persons WHERE id=?", (page1["person_id"],)
+                        ).fetchone()
+                        if person:
+                            doc["person"] = dict(person)
+                            doc["inherited_from_page1"] = True
+                            doc["page1_person_id"] = page1["person_id"]
+                    elif page1.get("raw_extraction_json"):
+                        try:
+                            p1_extracted = json.loads(page1["raw_extraction_json"])
+                            p1_person = p1_extracted.get("person", {})
+                            if (p1_person.get("first_name") or "").strip():
+                                doc["person"] = p1_person
+                                doc["inherited_from_page1"] = True
+                        except Exception:
+                            pass
+
+                # Inherit document-level fields if missing
+                inherit_fields = [
+                    "request_number", "request_date", "search_scope",
+                    "request_purpose", "data_valid_until", "registry_office",
+                    "applicant_name_raw",
+                ]
+                for field in inherit_fields:
+                    if not (doc.get(field) or "").strip() and (page1.get(field) or "").strip():
+                        doc[field] = page1[field]
+
     return doc
 
 
@@ -304,6 +345,17 @@ async def confirm_document(doc_id: int, request: Request):
 
         person_id = None
 
+        # For multi-page PDFs (page 2+), auto-link to page 1's person
+        page1_person_id = None
+        if current_doc.get("pdf_group_id") and (current_doc.get("page_number") or 0) > 1:
+            page1 = conn.execute(
+                """SELECT person_id FROM documents
+                   WHERE pdf_group_id=? AND page_number=1 AND person_id IS NOT NULL""",
+                (current_doc["pdf_group_id"],),
+            ).fetchone()
+            if page1:
+                page1_person_id = page1["person_id"]
+
         # Option 1: User explicitly chose to merge with an existing person
         if merge_person_id:
             try:
@@ -387,6 +439,10 @@ async def confirm_document(doc_id: int, request: Request):
                         person_id,
                     ),
                 )
+
+        # Option 2b: Auto-link to page 1's person for multi-page PDFs
+        if not person_id and page1_person_id:
+            person_id = page1_person_id
 
         # Option 3: Create new person
         if not person_id:

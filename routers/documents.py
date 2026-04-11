@@ -39,7 +39,7 @@ async def document_queue(request: Request, status: str = "", uploaded: int = 0):
                SUM(CASE WHEN status='extracted' THEN 1 ELSE 0 END) AS pending_review,
                SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS processing,
                SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS errors
-            FROM documents"""
+            FROM documents WHERE status != 'staged'"""
         ).fetchone()
 
     return templates.TemplateResponse(

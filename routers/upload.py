@@ -108,7 +108,7 @@ async def upload_page(request: Request):
                SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) AS confirmed,
                SUM(CASE WHEN status='extracted' THEN 1 ELSE 0 END) AS pending_review,
                SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS errors
-            FROM documents"""
+            FROM documents WHERE status != 'staged'"""
         ).fetchone()
     return templates.TemplateResponse(
         request, "index.html", {
@@ -171,3 +171,102 @@ async def upload_files(
     if len(doc_ids) == 1:
         return RedirectResponse(f"/review/{doc_ids[0][0]}?wait=1", status_code=303)
     return RedirectResponse("/documents?uploaded=1", status_code=303)
+
+
+# ─── Two-step workflow: stage images, then process ─────────────
+
+@router.post("/upload/stage")
+async def stage_file(
+    request: Request,
+    files: list[UploadFile] = File(...),
+):
+    """Save uploaded images without triggering AI extraction."""
+    staged = []
+    for upload in files:
+        suffix = Path(upload.filename).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            continue
+
+        file_bytes = await upload.read()
+
+        if suffix in ALLOWED_PDF_EXTS:
+            pages = pdf_to_images(file_bytes, upload.filename)
+            for page_info in pages:
+                with get_db() as conn:
+                    cursor = conn.execute(
+                        """INSERT INTO documents
+                           (image_path, status, pdf_group_id, page_number)
+                           VALUES (?, 'staged', ?, ?)""",
+                        (
+                            page_info["image_path"],
+                            page_info["pdf_group_id"],
+                            page_info["page_number"],
+                        ),
+                    )
+                    staged.append({
+                        "id": cursor.lastrowid,
+                        "image_path": page_info["image_path"],
+                        "name": f"{upload.filename} (p{page_info['page_number']})",
+                    })
+        else:
+            rel_path = _save_image(file_bytes, upload.filename)
+            with get_db() as conn:
+                cursor = conn.execute(
+                    "INSERT INTO documents (image_path, status) VALUES (?, 'staged')",
+                    (rel_path,),
+                )
+                staged.append({
+                    "id": cursor.lastrowid,
+                    "image_path": rel_path,
+                    "name": upload.filename,
+                })
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"staged": staged})
+
+
+@router.post("/upload/process-staged")
+async def process_staged(
+    request: Request,
+    doc_ids: str = Form(...),
+    provider: str = Form(""),
+):
+    """Trigger AI extraction for previously staged documents."""
+    if not provider:
+        provider = get_default_provider()
+
+    ids = [int(x) for x in doc_ids.split(",") if x.strip().isdigit()]
+
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT id, image_path FROM documents WHERE id IN ({','.join('?' * len(ids))}) AND status='staged'",
+            ids,
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                "UPDATE documents SET status='pending', provider=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (provider, row["id"]),
+            )
+
+    for row in rows:
+        asyncio.create_task(_extract_and_save(row["id"], row["image_path"], provider))
+
+    if len(rows) == 1:
+        return RedirectResponse(f"/review/{rows[0]['id']}?wait=1", status_code=303)
+    return RedirectResponse("/documents?uploaded=1", status_code=303)
+
+
+@router.delete("/upload/staged/{doc_id}")
+async def remove_staged(doc_id: int):
+    """Remove a single staged document before processing."""
+    from fastapi.responses import JSONResponse
+    with get_db() as conn:
+        row = conn.execute("SELECT image_path FROM documents WHERE id=? AND status='staged'", (doc_id,)).fetchone()
+        if row:
+            # Delete the file
+            file_path = Path(UPLOAD_DIR) / row["image_path"]
+            if file_path.exists():
+                file_path.unlink()
+            conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+            return JSONResponse({"ok": True})
+    return JSONResponse({"ok": False}, status_code=404)
