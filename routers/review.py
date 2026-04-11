@@ -71,7 +71,7 @@ def _get_document(doc_id: int) -> dict | None:
         is_subsequent_page = False
         sibling_doc = None
 
-        # Method 1: PDF group link
+        # Method 1: PDF group link (reliable, unique grouping)
         if doc.get("pdf_group_id") and (doc.get("page_number") or 0) > 1:
             is_subsequent_page = True
             sibling_doc = conn.execute(
@@ -80,27 +80,32 @@ def _get_document(doc_id: int) -> dict | None:
                 (doc["pdf_group_id"],),
             ).fetchone()
 
-        # Method 2: Same request_number + page_info indicates page 2+
+        # Method 2: Same request_number + search_scope + page_info indicates page 2+
+        # MUST match on BOTH request_number AND search_scope to avoid cross-person contamination
         if not sibling_doc and not current_first:
             page_info_str = doc.get("page_info") or ""
-            req_num = doc.get("request_number") or ""
+            req_num = (doc.get("request_number") or "").strip()
+            doc_scope = (doc.get("search_scope") or "").strip()
             if req_num and _is_subsequent_page(page_info_str):
                 is_subsequent_page = True
-                # Find another document with same request_number that has person data
-                sibling_doc = conn.execute(
-                    """SELECT * FROM documents
-                       WHERE request_number=? AND id != ? AND person_id IS NOT NULL
-                       ORDER BY id LIMIT 1""",
-                    (req_num, doc["id"]),
-                ).fetchone()
-                if not sibling_doc:
-                    # Page 1 may not be confirmed yet; look for one with raw extraction
+                if doc_scope:
+                    # Match by request_number + search_scope (safe)
                     sibling_doc = conn.execute(
                         """SELECT * FROM documents
-                           WHERE request_number=? AND id != ? AND raw_extraction_json IS NOT NULL
+                           WHERE request_number=? AND search_scope=? AND id != ?
+                             AND person_id IS NOT NULL
                            ORDER BY id LIMIT 1""",
-                        (req_num, doc["id"]),
+                        (req_num, doc_scope, doc["id"]),
                     ).fetchone()
+                    if not sibling_doc:
+                        sibling_doc = conn.execute(
+                            """SELECT * FROM documents
+                               WHERE request_number=? AND search_scope=? AND id != ?
+                                 AND raw_extraction_json IS NOT NULL
+                               ORDER BY id LIMIT 1""",
+                            (req_num, doc_scope, doc["id"]),
+                        ).fetchone()
+                # If no search_scope on this doc, DON'T guess — leave it for manual entry
 
         if sibling_doc and not current_first:
             sibling_doc = dict(sibling_doc)
@@ -203,14 +208,14 @@ def _get_merge_candidates(
         if normalized_father and person.get("father_name"):
             if normalize_arabic(person["father_name"]) != normalized_father:
                 continue
-        scope_values = [scope.strip() for scope in (person.get("search_scopes") or "").split(",") if scope.strip()]
+        scope_values = [_normalize_scope(s) or s.strip() for s in (person.get("search_scopes") or "").split(",") if s.strip()]
         same_scope = bool(normalized_scope and normalized_scope in scope_values)
         registry_match = bool(
             normalized_registry
             and person.get("registry_number")
             and person["registry_number"].strip() == normalized_registry
         )
-        person["search_scope_list"] = scope_values
+        person["search_scope_list"] = [s.strip() for s in (person.get("search_scopes") or "").split(",") if s.strip()]
         person["same_scope"] = same_scope
         person["registry_match"] = registry_match
         person["merge_allowed"] = same_scope or registry_match
@@ -346,7 +351,7 @@ async def confirm_document(doc_id: int, request: Request):
         current_doc = dict(current_doc)
 
         # For multi-page documents (page 2+), resolve sibling document's person
-        # Works via pdf_group_id OR request_number + page_info
+        # Works via pdf_group_id OR request_number+search_scope + page_info
         page1_person_id = None
         is_subsequent = (
             current_doc.get("pdf_group_id")
@@ -366,23 +371,26 @@ async def confirm_document(doc_id: int, request: Request):
             if page1_doc and page1_doc["person_id"]:
                 page1_person_id = page1_doc["person_id"]
 
-        # Method 2: Same request_number + page_info indicates page 2+
+        # Method 2: Same request_number + search_scope + page_info indicates page 2+
         if not page1_person_id and not first_name:
-            req_num = current_doc.get("request_number") or ""
+            req_num = (current_doc.get("request_number") or "").strip()
             page_info_val = current_doc.get("page_info") or ""
+            doc_scope = (current_doc.get("search_scope") or "").strip()
             if req_num and _is_subsequent_page(page_info_val):
                 is_subsequent = True
-                sibling = conn.execute(
-                    """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
-                              p.registry_number
-                       FROM documents d
-                       LEFT JOIN persons p ON p.id = d.person_id
-                       WHERE d.request_number=? AND d.id != ? AND d.person_id IS NOT NULL
-                       ORDER BY d.id LIMIT 1""",
-                    (req_num, doc_id),
-                ).fetchone()
-                if sibling and sibling["person_id"]:
-                    page1_person_id = sibling["person_id"]
+                if doc_scope:
+                    sibling = conn.execute(
+                        """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
+                                  p.registry_number
+                           FROM documents d
+                           LEFT JOIN persons p ON p.id = d.person_id
+                           WHERE d.request_number=? AND d.search_scope=? AND d.id != ?
+                             AND d.person_id IS NOT NULL
+                           ORDER BY d.id LIMIT 1""",
+                        (req_num, doc_scope, doc_id),
+                    ).fetchone()
+                    if sibling and sibling["person_id"]:
+                        page1_person_id = sibling["person_id"]
 
         # Inherit person fields from sibling if not provided
         if page1_person_id and not first_name:
@@ -398,6 +406,19 @@ async def confirm_document(doc_id: int, request: Request):
                     if not (person_data.get(field) or "").strip() and sibling_person[field]:
                         person_data[field] = sibling_person[field]
                 registry_number = (person_data.get("registry_number") or "").strip() or None
+
+        # For subsequent pages, also inherit search_scope from the sibling doc
+        # so that merge validation can work (it requires same_scope)
+        if page1_person_id and is_subsequent:
+            sibling_scope_row = conn.execute(
+                "SELECT search_scope FROM documents WHERE person_id=? AND search_scope IS NOT NULL AND TRIM(search_scope) != '' LIMIT 1",
+                (page1_person_id,),
+            ).fetchone()
+            if sibling_scope_row:
+                _inherited_scope = (sibling_scope_row["search_scope"] or "").strip()
+                # Store for later use if body didn't provide search_scope
+                if not (body.get("search_scope") or "").strip() and _inherited_scope:
+                    body["search_scope"] = _inherited_scope
 
         if not first_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
