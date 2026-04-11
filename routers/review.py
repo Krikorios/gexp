@@ -281,8 +281,6 @@ async def confirm_document(doc_id: int, request: Request):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid properties payload")
 
     first_name = (person_data.get("first_name") or "").strip()
-    if not first_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
 
     registry_number = (person_data.get("registry_number") or "").strip() or None
 
@@ -295,6 +293,36 @@ async def confirm_document(doc_id: int, request: Request):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
         current_doc = dict(current_doc)
+
+        # For multi-page PDFs (page 2+), resolve page 1's person and inherit name if needed
+        page1_person_id = None
+        is_subsequent_page = (
+            current_doc.get("pdf_group_id")
+            and (current_doc.get("page_number") or 0) > 1
+        )
+        if is_subsequent_page:
+            page1_doc = conn.execute(
+                """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
+                          p.registry_number
+                   FROM documents d
+                   LEFT JOIN persons p ON p.id = d.person_id
+                   WHERE d.pdf_group_id=? AND d.page_number=1 AND d.person_id IS NOT NULL""",
+                (current_doc["pdf_group_id"],),
+            ).fetchone()
+            if page1_doc and page1_doc["person_id"]:
+                page1_person_id = page1_doc["person_id"]
+                # Inherit name from page 1's person if not provided
+                if not first_name and page1_doc["first_name"]:
+                    first_name = page1_doc["first_name"]
+                    person_data["first_name"] = first_name
+                    # Also inherit other person fields if empty
+                    for field in ("father_name", "family_name", "registry_number"):
+                        if not (person_data.get(field) or "").strip() and page1_doc[field]:
+                            person_data[field] = page1_doc[field]
+                    registry_number = (person_data.get("registry_number") or "").strip() or None
+
+        if not first_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
         if current_doc["status"] == "pending":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -345,16 +373,7 @@ async def confirm_document(doc_id: int, request: Request):
 
         person_id = None
 
-        # For multi-page PDFs (page 2+), auto-link to page 1's person
-        page1_person_id = None
-        if current_doc.get("pdf_group_id") and (current_doc.get("page_number") or 0) > 1:
-            page1 = conn.execute(
-                """SELECT person_id FROM documents
-                   WHERE pdf_group_id=? AND page_number=1 AND person_id IS NOT NULL""",
-                (current_doc["pdf_group_id"],),
-            ).fetchone()
-            if page1:
-                page1_person_id = page1["person_id"]
+        # page1_person_id already resolved above for multi-page PDFs
 
         # Option 1: User explicitly chose to merge with an existing person
         if merge_person_id:
