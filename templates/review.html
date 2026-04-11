@@ -54,14 +54,14 @@
   <div class="form-panel">
     <form id="reviewForm">
 
-      {% if doc.get('pdf_group_id') and (doc.get('page_number') or 0) > 1 %}
+      {% if doc.get('is_subsequent_page') %}
       <div class="info-banner page-group-banner">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        هذه الصفحة {{ doc.page_number }} من مستند متعدد الصفحات.
+        هذه صفحة تكميلية ({{ doc.get('page_info') or doc.get('page_number') or '' }}) من مستند متعدد الصفحات.
         {% if doc.get('inherited_from_page1') %}
         بيانات الشخص مستوردة تلقائياً من الصفحة الأولى.
         {% else %}
-        يرجى التأكد من بيانات الشخص يدوياً.
+        يرجى التأكد من بيانات الشخص يدوياً — لم يتم العثور على صفحة أولى مؤكدة بعد.
         {% endif %}
       </div>
       {% endif %}

@@ -1,5 +1,6 @@
 import json
 import asyncio
+import re
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -14,6 +15,25 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 REVIEWABLE_DOCUMENT_STATUSES = {"extracted", "confirmed", "error"}
+
+# Map Arabic-Indic digits to Western
+_ARABIC_DIGIT_MAP = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+
+def _is_subsequent_page(page_info: str) -> bool:
+    """Return True if page_info indicates this is page 2 or later.
+    Handles formats like: 'صفحة ٢ من 5', '2 / 3', 'صفحة 2 من 3', '٢ من ٣'
+    """
+    if not page_info:
+        return False
+    # Normalize Arabic-Indic digits to Western
+    normalized = page_info.translate(_ARABIC_DIGIT_MAP)
+    # Find the first number (the page number)
+    m = re.search(r"(\d+)", normalized)
+    if m:
+        page_num = int(m.group(1))
+        return page_num > 1
+    return False
 
 
 def _get_document(doc_id: int) -> dict | None:
@@ -42,46 +62,77 @@ def _get_document(doc_id: int) -> dict | None:
         else:
             doc["person"] = {}
 
-        # For multi-page PDFs (page 2+), inherit person info & doc fields from page 1
+        # For multi-page documents (page 2+), inherit person info & doc fields from page 1.
+        # Works for both PDF splits (pdf_group_id) and individually uploaded images (via request_number + page_info).
         doc["inherited_from_page1"] = False
+        doc["page1_person_id"] = None
+
+        current_first = (doc["person"].get("first_name") or "").strip()
+        is_subsequent_page = False
+        sibling_doc = None
+
+        # Method 1: PDF group link
         if doc.get("pdf_group_id") and (doc.get("page_number") or 0) > 1:
-            page1 = conn.execute(
+            is_subsequent_page = True
+            sibling_doc = conn.execute(
                 """SELECT * FROM documents
                    WHERE pdf_group_id=? AND page_number=1""",
                 (doc["pdf_group_id"],),
             ).fetchone()
-            if page1:
-                page1 = dict(page1)
-                # Inherit person data if current page has no name
-                current_first = (doc["person"].get("first_name") or "").strip()
-                if not current_first:
-                    if page1.get("person_id"):
-                        person = conn.execute(
-                            "SELECT * FROM persons WHERE id=?", (page1["person_id"],)
-                        ).fetchone()
-                        if person:
-                            doc["person"] = dict(person)
-                            doc["inherited_from_page1"] = True
-                            doc["page1_person_id"] = page1["person_id"]
-                    elif page1.get("raw_extraction_json"):
-                        try:
-                            p1_extracted = json.loads(page1["raw_extraction_json"])
-                            p1_person = p1_extracted.get("person", {})
-                            if (p1_person.get("first_name") or "").strip():
-                                doc["person"] = p1_person
-                                doc["inherited_from_page1"] = True
-                        except Exception:
-                            pass
 
-                # Inherit document-level fields if missing
-                inherit_fields = [
-                    "request_number", "request_date", "search_scope",
-                    "request_purpose", "data_valid_until", "registry_office",
-                    "applicant_name_raw",
-                ]
-                for field in inherit_fields:
-                    if not (doc.get(field) or "").strip() and (page1.get(field) or "").strip():
-                        doc[field] = page1[field]
+        # Method 2: Same request_number + page_info indicates page 2+
+        if not sibling_doc and not current_first:
+            page_info_str = doc.get("page_info") or ""
+            req_num = doc.get("request_number") or ""
+            if req_num and _is_subsequent_page(page_info_str):
+                is_subsequent_page = True
+                # Find another document with same request_number that has person data
+                sibling_doc = conn.execute(
+                    """SELECT * FROM documents
+                       WHERE request_number=? AND id != ? AND person_id IS NOT NULL
+                       ORDER BY id LIMIT 1""",
+                    (req_num, doc["id"]),
+                ).fetchone()
+                if not sibling_doc:
+                    # Page 1 may not be confirmed yet; look for one with raw extraction
+                    sibling_doc = conn.execute(
+                        """SELECT * FROM documents
+                           WHERE request_number=? AND id != ? AND raw_extraction_json IS NOT NULL
+                           ORDER BY id LIMIT 1""",
+                        (req_num, doc["id"]),
+                    ).fetchone()
+
+        if sibling_doc and not current_first:
+            sibling_doc = dict(sibling_doc)
+            if sibling_doc.get("person_id"):
+                person = conn.execute(
+                    "SELECT * FROM persons WHERE id=?", (sibling_doc["person_id"],)
+                ).fetchone()
+                if person:
+                    doc["person"] = dict(person)
+                    doc["inherited_from_page1"] = True
+                    doc["page1_person_id"] = sibling_doc["person_id"]
+            elif sibling_doc.get("raw_extraction_json"):
+                try:
+                    sib_extracted = json.loads(sibling_doc["raw_extraction_json"])
+                    sib_person = sib_extracted.get("person", {})
+                    if (sib_person.get("first_name") or "").strip():
+                        doc["person"] = sib_person
+                        doc["inherited_from_page1"] = True
+                except Exception:
+                    pass
+
+            # Inherit document-level fields if missing
+            inherit_fields = [
+                "request_number", "request_date", "search_scope",
+                "request_purpose", "data_valid_until", "registry_office",
+                "applicant_name_raw",
+            ]
+            for field in inherit_fields:
+                if not (doc.get(field) or "").strip() and (sibling_doc.get(field) or "").strip():
+                    doc[field] = sibling_doc[field]
+
+        doc["is_subsequent_page"] = is_subsequent_page
 
     return doc
 
@@ -294,13 +345,16 @@ async def confirm_document(doc_id: int, request: Request):
 
         current_doc = dict(current_doc)
 
-        # For multi-page PDFs (page 2+), resolve page 1's person and inherit name if needed
+        # For multi-page documents (page 2+), resolve sibling document's person
+        # Works via pdf_group_id OR request_number + page_info
         page1_person_id = None
-        is_subsequent_page = (
+        is_subsequent = (
             current_doc.get("pdf_group_id")
             and (current_doc.get("page_number") or 0) > 1
         )
-        if is_subsequent_page:
+
+        # Method 1: PDF group link
+        if is_subsequent:
             page1_doc = conn.execute(
                 """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
                           p.registry_number
@@ -311,15 +365,39 @@ async def confirm_document(doc_id: int, request: Request):
             ).fetchone()
             if page1_doc and page1_doc["person_id"]:
                 page1_person_id = page1_doc["person_id"]
-                # Inherit name from page 1's person if not provided
-                if not first_name and page1_doc["first_name"]:
-                    first_name = page1_doc["first_name"]
-                    person_data["first_name"] = first_name
-                    # Also inherit other person fields if empty
-                    for field in ("father_name", "family_name", "registry_number"):
-                        if not (person_data.get(field) or "").strip() and page1_doc[field]:
-                            person_data[field] = page1_doc[field]
-                    registry_number = (person_data.get("registry_number") or "").strip() or None
+
+        # Method 2: Same request_number + page_info indicates page 2+
+        if not page1_person_id and not first_name:
+            req_num = current_doc.get("request_number") or ""
+            page_info_val = current_doc.get("page_info") or ""
+            if req_num and _is_subsequent_page(page_info_val):
+                is_subsequent = True
+                sibling = conn.execute(
+                    """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
+                              p.registry_number
+                       FROM documents d
+                       LEFT JOIN persons p ON p.id = d.person_id
+                       WHERE d.request_number=? AND d.id != ? AND d.person_id IS NOT NULL
+                       ORDER BY d.id LIMIT 1""",
+                    (req_num, doc_id),
+                ).fetchone()
+                if sibling and sibling["person_id"]:
+                    page1_person_id = sibling["person_id"]
+
+        # Inherit person fields from sibling if not provided
+        if page1_person_id and not first_name:
+            sibling_person = conn.execute(
+                "SELECT * FROM persons WHERE id=?", (page1_person_id,)
+            ).fetchone()
+            if sibling_person:
+                first_name = sibling_person["first_name"] or ""
+                person_data["first_name"] = first_name
+                for field in ("father_name", "mother_name", "family_name",
+                              "family_origin", "nationality", "birth_date",
+                              "registry_number", "registry_place"):
+                    if not (person_data.get(field) or "").strip() and sibling_person[field]:
+                        person_data[field] = sibling_person[field]
+                registry_number = (person_data.get("registry_number") or "").strip() or None
 
         if not first_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name is required")
