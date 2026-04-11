@@ -32,23 +32,49 @@
   <div class="card-heading">
     <div>
       <h2>رفع ملفات جديدة</h2>
-      <p>اختر دفعة صور أو PDF، ثم حدّد محرك الاستخراج قبل بدء المعالجة.</p>
+      <p class="desktop-only">اختر دفعة صور أو PDF، ثم حدّد محرك الاستخراج قبل بدء المعالجة.</p>
+      <p class="mobile-only">التقط صوراً أو اختر ملفات، ثم اضغط «معالجة الكل».</p>
     </div>
   </div>
-  <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-    <input type="file" name="files" id="fileInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
-    <label for="fileInput" class="drop-zone" id="dropZone">
-      <div class="drop-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </div>
-      <p class="drop-text">اسحب الملفات هنا أو انقر للاختيار</p>
-      <p class="drop-hint">JPG، PNG، PDF — يمكن رفع عدة ملفات دفعة واحدة</p>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" class="file-input">
+  <input type="file" id="galleryInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
+
+  <!-- Empty state: show capture buttons -->
+  <div id="emptyState" class="upload-empty-state">
+    <div class="capture-buttons">
+      <label for="cameraInput" class="capture-btn capture-btn-camera" id="cameraBtnLabel">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span>التقط صورة</span>
+      </label>
+      <label for="galleryInput" class="capture-btn capture-btn-gallery">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span>اختر من المعرض</span>
+      </label>
+    </div>
+    <p class="upload-hint">التقط عدة صور، ثم اضغط «معالجة الكل» دفعة واحدة</p>
+  </div>
+
+  <!-- Gallery: shown once images are added -->
+  <div id="stagingGallery" class="staging-gallery hidden"></div>
+
+  <!-- Floating add-more button (appears after first image) -->
+  <div id="addMoreBar" class="add-more-bar hidden">
+    <label for="cameraInput" class="add-more-btn" id="addMoreCameraLabel">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      التقط المزيد
     </label>
+    <label for="galleryInput" class="add-more-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      أضف ملفات
+    </label>
+    <span id="stagingCount" class="staging-count-inline">0 صور</span>
+  </div>
 
-    <div id="fileList" class="file-list hidden"></div>
-
-    <!-- Provider selector -->
-    <div id="providerSection" class="provider-section hidden">
+  <!-- Provider + process actions -->
+  <div id="stagingActions" class="staging-actions hidden">
+    <div class="provider-section">
       <label class="provider-label">محرك الاستخراج:</label>
       <div class="provider-options">
         {% for p in providers %}
@@ -63,61 +89,9 @@
         {% endfor %}
       </div>
     </div>
-
-    <div id="uploadActions" class="upload-actions hidden">
-      <button type="submit" class="btn btn-primary btn-large">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        رفع ومعالجة
-      </button>
-      <button type="button" class="btn btn-secondary" onclick="clearFiles()">إلغاء</button>
-    </div>
-  </form>
-</div>
-
-<!-- ─── Two-step: Stage pictures then process ─── -->
-<div class="upload-card" id="stagingCard">
-  <div class="card-heading">
-    <div>
-      <h2>التقاط صور ثم معالجة دفعة واحدة</h2>
-      <p>التقط أو أضف صوراً واحدة تلو الأخرى، ثم اضغط على «معالجة الكل» عند الانتهاء.</p>
-    </div>
-  </div>
-
-  <div class="stage-controls">
-    <input type="file" id="stageFileInput" accept=".jpg,.jpeg,.png,.webp,.pdf" capture="environment" class="file-input">
-    <label for="stageFileInput" class="btn btn-secondary btn-large stage-capture-btn">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      التقط صورة / أضف ملف
-    </label>
-    <input type="file" id="stageMultiInput" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" class="file-input">
-    <label for="stageMultiInput" class="btn btn-secondary btn-large">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      اختر عدة ملفات
-    </label>
-  </div>
-
-  <div id="stagingGallery" class="staging-gallery hidden"></div>
-  <div id="stagingCount" class="staging-count hidden"></div>
-
-  <div id="stagingActions" class="upload-actions hidden">
-    <div class="provider-section">
-      <label class="provider-label">محرك الاستخراج:</label>
-      <div class="provider-options">
-        {% for p in providers %}
-        <label class="provider-option">
-          <input type="radio" name="stage_provider" value="{{ p.id }}"
-                 {{ 'checked' if p.id == default_provider else '' }}>
-          <span class="provider-card {{ 'provider-free' if p.id == 'easyocr' else 'provider-ai' }}">
-            <span class="provider-name">{{ p.name }}</span>
-            <span class="provider-model">{{ p.model }}</span>
-          </span>
-        </label>
-        {% endfor %}
-      </div>
-    </div>
     <div class="stage-action-buttons">
-      <button type="button" class="btn btn-primary btn-large" id="processAllBtn" onclick="processStaged()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <button type="button" class="btn btn-primary btn-large btn-process" id="processAllBtn" onclick="processStaged()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         معالجة الكل
       </button>
       <button type="button" class="btn btn-secondary" onclick="clearStaged()">مسح الكل</button>
@@ -149,95 +123,87 @@
 
 {% block scripts %}
 <script>
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-const fileList = document.getElementById('fileList');
-const uploadActions = document.getElementById('uploadActions');
-
-// label[for] natively triggers the file input on all platforms including iOS
-
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('drag-over');
-});
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag-over');
-  fileInput.files = e.dataTransfer.files;
-  showFiles(fileInput.files);
-});
-
-fileInput.addEventListener('change', () => showFiles(fileInput.files));
-
-function showFiles(files) {
-  if (!files.length) return;
-  fileList.innerHTML = Array.from(files).map(f =>
-    `<div class="file-item">${f.name} <span class="file-size">${(f.size/1024).toFixed(0)} KB</span></div>`
-  ).join('');
-  fileList.classList.remove('hidden');
-  document.getElementById('providerSection').classList.remove('hidden');
-  uploadActions.classList.remove('hidden');
-}
-
-function clearFiles() {
-  fileInput.value = '';
-  fileList.innerHTML = '';
-  fileList.classList.add('hidden');
-  document.getElementById('providerSection').classList.add('hidden');
-  uploadActions.classList.add('hidden');
-}
-
-document.getElementById('uploadForm').addEventListener('submit', function() {
-  document.querySelector('.btn-primary').textContent = 'جارٍ الرفع...';
-  document.querySelector('.btn-primary').disabled = true;
-});
-
-// ─── Staging workflow ─────────────────────────────────────────
+// ─── Unified staging workflow ─────────────────────────────────
 const stagedItems = []; // {id, image_path, name}
+let uploading = false;
 
-async function stageFiles(fileInputEl) {
-  const files = fileInputEl.files;
+const cameraInput = document.getElementById('cameraInput');
+const galleryInput = document.getElementById('galleryInput');
+const emptyState = document.getElementById('emptyState');
+const gallery = document.getElementById('stagingGallery');
+const addMoreBar = document.getElementById('addMoreBar');
+const actionsEl = document.getElementById('stagingActions');
+const countEl = document.getElementById('stagingCount');
+
+// Wire up file inputs
+cameraInput.addEventListener('change', () => stageFiles(cameraInput));
+galleryInput.addEventListener('change', () => stageFiles(galleryInput));
+
+// Desktop drag & drop on the empty state
+emptyState.addEventListener('dragover', e => { e.preventDefault(); emptyState.classList.add('drag-over'); });
+emptyState.addEventListener('dragleave', () => emptyState.classList.remove('drag-over'));
+emptyState.addEventListener('drop', e => {
+  e.preventDefault();
+  emptyState.classList.remove('drag-over');
+  stageFileList(e.dataTransfer.files);
+});
+
+// Also allow drag & drop on gallery when it's visible
+gallery.addEventListener('dragover', e => { e.preventDefault(); gallery.classList.add('drag-over'); });
+gallery.addEventListener('dragleave', () => gallery.classList.remove('drag-over'));
+gallery.addEventListener('drop', e => {
+  e.preventDefault();
+  gallery.classList.remove('drag-over');
+  stageFileList(e.dataTransfer.files);
+});
+
+async function stageFiles(inputEl) {
+  const files = inputEl.files;
   if (!files.length) return;
+  await stageFileList(files);
+  inputEl.value = '';
+}
+
+async function stageFileList(files) {
+  if (!files.length) return;
+  uploading = true;
+  refreshUI();
 
   for (const file of files) {
     const formData = new FormData();
     formData.append('files', file);
-
-    const thumb = addStagingPlaceholder(file.name);
+    const thumb = addPlaceholder(file.name);
 
     try {
       const res = await fetch('/upload/stage', { method: 'POST', body: formData });
       const data = await res.json();
       for (const item of data.staged) {
         stagedItems.push(item);
-        updateStagingThumb(thumb, item);
+        finishThumb(thumb, item);
       }
     } catch (e) {
       thumb.remove();
-      alert('خطأ في رفع الملف: ' + file.name);
     }
   }
 
-  fileInputEl.value = '';
-  refreshStagingUI();
+  uploading = false;
+  refreshUI();
 }
 
-function addStagingPlaceholder(name) {
-  const gallery = document.getElementById('stagingGallery');
+function addPlaceholder(name) {
   gallery.classList.remove('hidden');
   const div = document.createElement('div');
   div.className = 'staging-thumb loading';
-  div.innerHTML = `<div class="staging-thumb-spinner"></div><span class="staging-thumb-name">${name}</span>`;
+  div.innerHTML = '<div class="staging-thumb-spinner"></div>';
   gallery.appendChild(div);
   return div;
 }
 
-function updateStagingThumb(thumb, item) {
+function finishThumb(thumb, item) {
   thumb.classList.remove('loading');
   thumb.dataset.id = item.id;
   thumb.innerHTML = `
-    <img src="/uploads/${item.image_path}" alt="${item.name}">
+    <img src="/uploads/${item.image_path}" alt="">
     <span class="staging-thumb-name">${item.name}</span>
     <button type="button" class="staging-remove" onclick="removeStagedItem(${item.id}, this)" title="إزالة">&times;</button>
   `;
@@ -246,36 +212,39 @@ function updateStagingThumb(thumb, item) {
 async function removeStagedItem(id, btn) {
   const thumb = btn.closest('.staging-thumb');
   thumb.classList.add('removing');
-  try {
-    await fetch('/upload/staged/' + id, { method: 'DELETE' });
-  } catch (e) { /* ignore */ }
+  try { await fetch('/upload/staged/' + id, { method: 'DELETE' }); } catch(e) {}
   const idx = stagedItems.findIndex(s => s.id === id);
   if (idx !== -1) stagedItems.splice(idx, 1);
   thumb.remove();
-  refreshStagingUI();
+  refreshUI();
 }
 
-function refreshStagingUI() {
-  const count = stagedItems.length;
-  const countEl = document.getElementById('stagingCount');
-  const actionsEl = document.getElementById('stagingActions');
-  const gallery = document.getElementById('stagingGallery');
+function refreshUI() {
+  const n = stagedItems.length;
+  const hasItems = n > 0 || uploading;
 
-  if (count > 0) {
-    countEl.textContent = `${count} صورة جاهزة للمعالجة`;
-    countEl.classList.remove('hidden');
-    actionsEl.classList.remove('hidden');
-  } else {
-    countEl.classList.add('hidden');
-    actionsEl.classList.add('hidden');
-    gallery.classList.add('hidden');
+  emptyState.classList.toggle('hidden', hasItems);
+  gallery.classList.toggle('hidden', !hasItems);
+  addMoreBar.classList.toggle('hidden', !hasItems);
+  actionsEl.classList.toggle('hidden', n === 0);
+  countEl.textContent = n === 1 ? 'صورة واحدة' : n + ' صور';
+
+  const processBtn = document.getElementById('processAllBtn');
+  if (processBtn) {
+    processBtn.querySelector('.btn-process-count')?.remove();
+    if (n > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'btn-process-count';
+      badge.textContent = n;
+      processBtn.appendChild(badge);
+    }
   }
 }
 
-async function processStaged() {
+function processStaged() {
   if (!stagedItems.length) return;
   const ids = stagedItems.map(s => s.id).join(',');
-  const provider = document.querySelector('input[name="stage_provider"]:checked')?.value || '';
+  const provider = document.querySelector('input[name="provider"]:checked')?.value || '';
 
   const btn = document.getElementById('processAllBtn');
   btn.textContent = 'جارٍ المعالجة...';
@@ -294,11 +263,8 @@ async function clearStaged() {
     try { await fetch('/upload/staged/' + item.id, { method: 'DELETE' }); } catch(e) {}
   }
   stagedItems.length = 0;
-  document.getElementById('stagingGallery').innerHTML = '';
-  refreshStagingUI();
+  gallery.innerHTML = '';
+  refreshUI();
 }
-
-document.getElementById('stageFileInput').addEventListener('change', function() { stageFiles(this); });
-document.getElementById('stageMultiInput').addEventListener('change', function() { stageFiles(this); });
 </script>
 {% endblock %}
