@@ -233,8 +233,19 @@ def _get_merge_candidates(
         if normalized_father and person.get("father_name"):
             if normalize_arabic(person["father_name"]) != normalized_father:
                 continue
+        
         scope_values = [_normalize_scope(s) or s.strip() for s in (person.get("search_scopes") or "").split(",") if s.strip()]
-        same_scope = bool(normalized_scope and normalized_scope in scope_values)
+        
+        same_scope = False
+        if not normalized_scope:
+            same_scope = True
+        elif not scope_values:
+            same_scope = True
+        elif normalized_scope == "كل لبنان" or "كل لبنان" in scope_values or _normalize_scope("كل لبنان") in scope_values:
+            same_scope = True
+        elif normalized_scope in scope_values:
+            same_scope = True
+
         registry_match = bool(
             normalized_registry
             and person.get("registry_number")
