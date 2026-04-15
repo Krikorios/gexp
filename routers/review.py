@@ -8,7 +8,12 @@ from fastapi.templating import Jinja2Templates
 
 from config import UPLOAD_DIR
 from database.connection import get_db
-from services.extractor import extract_document
+from services.extractor import (
+    extract_document,
+    get_available_providers,
+    get_default_provider,
+    verify_page_correlation,
+)
 from services.search_service import normalize_arabic, _normalize_scope
 
 router = APIRouter()
@@ -34,6 +39,60 @@ def _is_subsequent_page(page_info: str) -> bool:
         page_num = int(m.group(1))
         return page_num > 1
     return False
+
+
+def _find_page1_candidate(conn, doc: dict) -> tuple[bool, dict | None]:
+    """Return whether the doc looks like a later page and the best page-1 candidate."""
+    is_subsequent_page = False
+    sibling_doc = None
+
+    if doc.get("pdf_group_id") and (doc.get("page_number") or 0) > 1:
+        is_subsequent_page = True
+        sibling_doc = conn.execute(
+            """SELECT * FROM documents
+               WHERE pdf_group_id=? AND page_number=1""",
+            (doc["pdf_group_id"],),
+        ).fetchone()
+
+    if not sibling_doc:
+        page_info_str = doc.get("page_info") or ""
+        req_num = (doc.get("request_number") or "").strip()
+        doc_scope = (doc.get("search_scope") or "").strip()
+        if req_num and _is_subsequent_page(page_info_str):
+            is_subsequent_page = True
+            if doc_scope:
+                sibling_doc = conn.execute(
+                    """SELECT * FROM documents
+                       WHERE request_number=? AND search_scope=? AND id != ?
+                       ORDER BY CASE WHEN page_number=1 THEN 0 ELSE 1 END,
+                                CASE WHEN person_id IS NOT NULL THEN 0 ELSE 1 END,
+                                id
+                       LIMIT 1""",
+                    (req_num, doc_scope, doc["id"]),
+                ).fetchone()
+
+    return is_subsequent_page, dict(sibling_doc) if sibling_doc else None
+
+
+def _build_correlation_context(doc: dict) -> dict:
+    person = doc.get("person") or {}
+    return {
+        "document_id": doc.get("id"),
+        "request_number": doc.get("request_number"),
+        "request_date": doc.get("request_date"),
+        "page_info": doc.get("page_info"),
+        "page_number": doc.get("page_number"),
+        "search_scope": doc.get("search_scope"),
+        "applicant_name_raw": doc.get("applicant_name_raw"),
+        "person": {
+            "first_name": person.get("first_name"),
+            "father_name": person.get("father_name"),
+            "mother_name": person.get("mother_name"),
+            "family_name": person.get("family_name"),
+            "registry_number": person.get("registry_number"),
+            "registry_place": person.get("registry_place"),
+        },
+    }
 
 
 def _get_document(doc_id: int) -> dict | None:
@@ -66,58 +125,24 @@ def _get_document(doc_id: int) -> dict | None:
         # Works for both PDF splits (pdf_group_id) and individually uploaded images (via request_number + page_info).
         doc["inherited_from_page1"] = False
         doc["page1_person_id"] = None
+        doc["page1_doc_id"] = None
 
         current_first = (doc["person"].get("first_name") or "").strip()
-        is_subsequent_page = False
-        sibling_doc = None
+        is_subsequent_page, sibling_doc = _find_page1_candidate(conn, doc)
 
-        # Method 1: PDF group link (reliable, unique grouping)
-        if doc.get("pdf_group_id") and (doc.get("page_number") or 0) > 1:
-            is_subsequent_page = True
-            sibling_doc = conn.execute(
-                """SELECT * FROM documents
-                   WHERE pdf_group_id=? AND page_number=1""",
-                (doc["pdf_group_id"],),
-            ).fetchone()
-
-        # Method 2: Same request_number + search_scope + page_info indicates page 2+
-        # MUST match on BOTH request_number AND search_scope to avoid cross-person contamination
-        if not sibling_doc and not current_first:
-            page_info_str = doc.get("page_info") or ""
-            req_num = (doc.get("request_number") or "").strip()
-            doc_scope = (doc.get("search_scope") or "").strip()
-            if req_num and _is_subsequent_page(page_info_str):
-                is_subsequent_page = True
-                if doc_scope:
-                    # Match by request_number + search_scope (safe)
-                    sibling_doc = conn.execute(
-                        """SELECT * FROM documents
-                           WHERE request_number=? AND search_scope=? AND id != ?
-                             AND person_id IS NOT NULL
-                           ORDER BY id LIMIT 1""",
-                        (req_num, doc_scope, doc["id"]),
-                    ).fetchone()
-                    if not sibling_doc:
-                        sibling_doc = conn.execute(
-                            """SELECT * FROM documents
-                               WHERE request_number=? AND search_scope=? AND id != ?
-                                 AND raw_extraction_json IS NOT NULL
-                               ORDER BY id LIMIT 1""",
-                            (req_num, doc_scope, doc["id"]),
-                        ).fetchone()
-                # If no search_scope on this doc, DON'T guess — leave it for manual entry
-
-        if sibling_doc and not current_first:
-            sibling_doc = dict(sibling_doc)
+        if sibling_doc:
+            doc["page1_doc_id"] = sibling_doc.get("id")
             if sibling_doc.get("person_id"):
+                doc["page1_person_id"] = sibling_doc["person_id"]
+
+            if sibling_doc.get("person_id") and not current_first:
                 person = conn.execute(
                     "SELECT * FROM persons WHERE id=?", (sibling_doc["person_id"],)
                 ).fetchone()
                 if person:
                     doc["person"] = dict(person)
                     doc["inherited_from_page1"] = True
-                    doc["page1_person_id"] = sibling_doc["person_id"]
-            elif sibling_doc.get("raw_extraction_json"):
+            elif sibling_doc.get("raw_extraction_json") and not current_first:
                 try:
                     sib_extracted = json.loads(sibling_doc["raw_extraction_json"])
                     sib_person = sib_extracted.get("person", {})
@@ -282,7 +307,64 @@ async def review_document(request: Request, doc_id: int, wait: int = 0):
         )
 
     return templates.TemplateResponse(
-        request, "review.html", {"doc": doc, "upload_dir": "/uploads"}
+        request,
+        "review.html",
+        {
+            "doc": doc,
+            "upload_dir": "/uploads",
+            "providers": get_available_providers(),
+            "current_provider": doc.get("provider") or get_default_provider(),
+            "ai_verification_available": any(
+                provider["id"] in {"claude", "gemini"} for provider in get_available_providers()
+            ),
+        },
+    )
+
+
+@router.post("/review/{doc_id}/verify-correlation")
+async def review_verify_correlation(doc_id: int):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            return JSONResponse({"error": "Document not found"}, status_code=404)
+
+        current_doc = _get_document(doc_id)
+        if not current_doc:
+            return JSONResponse({"error": "Document not found"}, status_code=404)
+
+        is_subsequent_page, sibling_doc = _find_page1_candidate(conn, dict(row))
+        if not is_subsequent_page:
+            return JSONResponse(
+                {"error": "This document is not identified as page 2 or later."},
+                status_code=400,
+            )
+        if not sibling_doc:
+            return JSONResponse(
+                {"error": "No page 1 candidate was found for AI verification."},
+                status_code=404,
+            )
+
+        candidate_doc = _get_document(sibling_doc["id"])
+        if not candidate_doc:
+            return JSONResponse({"error": "Candidate page not found"}, status_code=404)
+
+    try:
+        result = await verify_page_correlation(
+            current_doc["image_path"],
+            candidate_doc["image_path"],
+            _build_correlation_context(current_doc),
+            _build_correlation_context(candidate_doc),
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "current_doc_id": current_doc["id"],
+            "candidate_doc_id": candidate_doc["id"],
+            **result,
+        }
     )
 
 
@@ -353,44 +435,9 @@ async def confirm_document(doc_id: int, request: Request):
         # For multi-page documents (page 2+), resolve sibling document's person
         # Works via pdf_group_id OR request_number+search_scope + page_info
         page1_person_id = None
-        is_subsequent = (
-            current_doc.get("pdf_group_id")
-            and (current_doc.get("page_number") or 0) > 1
-        )
-
-        # Method 1: PDF group link
-        if is_subsequent:
-            page1_doc = conn.execute(
-                """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
-                          p.registry_number
-                   FROM documents d
-                   LEFT JOIN persons p ON p.id = d.person_id
-                   WHERE d.pdf_group_id=? AND d.page_number=1 AND d.person_id IS NOT NULL""",
-                (current_doc["pdf_group_id"],),
-            ).fetchone()
-            if page1_doc and page1_doc["person_id"]:
-                page1_person_id = page1_doc["person_id"]
-
-        # Method 2: Same request_number + search_scope + page_info indicates page 2+
-        if not page1_person_id and not first_name:
-            req_num = (current_doc.get("request_number") or "").strip()
-            page_info_val = current_doc.get("page_info") or ""
-            doc_scope = (current_doc.get("search_scope") or "").strip()
-            if req_num and _is_subsequent_page(page_info_val):
-                is_subsequent = True
-                if doc_scope:
-                    sibling = conn.execute(
-                        """SELECT d.person_id, p.first_name, p.father_name, p.family_name,
-                                  p.registry_number
-                           FROM documents d
-                           LEFT JOIN persons p ON p.id = d.person_id
-                           WHERE d.request_number=? AND d.search_scope=? AND d.id != ?
-                             AND d.person_id IS NOT NULL
-                           ORDER BY d.id LIMIT 1""",
-                        (req_num, doc_scope, doc_id),
-                    ).fetchone()
-                    if sibling and sibling["person_id"]:
-                        page1_person_id = sibling["person_id"]
+        is_subsequent, sibling = _find_page1_candidate(conn, current_doc)
+        if sibling and sibling.get("person_id"):
+            page1_person_id = sibling["person_id"]
 
         # Inherit person fields from sibling if not provided
         if page1_person_id and not first_name:
@@ -658,7 +705,7 @@ async def confirm_document(doc_id: int, request: Request):
 
 @router.post("/extract/{doc_id}")
 async def retrigger_extraction(doc_id: int, provider: str = ""):
-    """Re-run extraction for a document (retry after error)."""
+    """Re-run extraction for a document and reset the extracted state first."""
     with get_db() as conn:
         doc = conn.execute(
             "SELECT image_path, provider FROM documents WHERE id=?", (doc_id,)
@@ -666,14 +713,32 @@ async def retrigger_extraction(doc_id: int, provider: str = ""):
     if not doc:
         return JSONResponse({"error": "not found"}, status_code=404)
 
+    use_provider = provider or doc["provider"] or get_default_provider()
+
     with get_db() as conn:
         conn.execute(
-            "UPDATE documents SET status='pending', extraction_error=NULL WHERE id=?",
-            (doc_id,),
+            """UPDATE documents
+               SET status='pending',
+                   person_id=NULL,
+                   request_number=NULL,
+                   request_date=NULL,
+                   applicant_name_raw=NULL,
+                   request_purpose=NULL,
+                   data_valid_until=NULL,
+                   registry_office=NULL,
+                   owns_properties=NULL,
+                   declared_property_count=NULL,
+                   page_info=NULL,
+                   search_scope=NULL,
+                   raw_extraction_json=NULL,
+                   extraction_error=NULL,
+                   provider=?,
+                   updated_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (use_provider, doc_id),
         )
         conn.execute("DELETE FROM properties WHERE document_id=?", (doc_id,))
 
     from routers.upload import _extract_and_save
-    use_provider = provider or doc["provider"] or ""
     asyncio.create_task(_extract_and_save(doc_id, doc["image_path"], use_provider))
     return JSONResponse({"ok": True, "message": "Extraction started"})

@@ -75,6 +75,87 @@
   line-height: 1.35;
 }
 
+.page-group-banner {
+  align-items: flex-start;
+}
+
+.page-group-copy {
+  display: flex;
+  flex: 1;
+  gap: .9rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.page-group-actions {
+  margin-inline-start: auto;
+}
+
+.rescan-banner {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.rescan-copy {
+  display: inline-block;
+  margin-inline-start: .35rem;
+}
+
+.rescan-controls {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin-inline-start: auto;
+}
+
+.rescan-controls select {
+  min-width: 220px;
+  padding: .62rem .8rem;
+  border: 1px solid rgba(59, 130, 246, .28);
+  border-radius: 12px;
+  background: rgba(255,255,255,.96);
+  color: var(--text);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.correlation-result {
+  margin-bottom: 1rem;
+}
+
+.correlation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.correlation-meta {
+  font-size: .82rem;
+  opacity: .9;
+}
+
+.correlation-list {
+  margin: .6rem 0 0;
+  padding-inline-start: 1.25rem;
+}
+
+.correlation-warnings {
+  margin-top: .4rem;
+}
+
 /* ============================
    Review — Responsive
    ============================ */
@@ -95,6 +176,18 @@
   .review-nav .btn {
     flex: 1 1 calc(50% - .5rem);
   }
+  .page-group-actions {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+  .rescan-controls {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+  .rescan-controls select,
+  .rescan-controls .btn {
+    flex: 1 1 0;
+  }
 }
 
 @media (max-width: 640px) {
@@ -110,6 +203,17 @@
   }
   .review-nav .btn {
     flex-basis: 100%;
+  }
+  .page-group-actions .btn {
+    width: 100%;
+  }
+  .rescan-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .rescan-controls select {
+    min-width: 0;
+    width: 100%;
   }
   .form-section {
     padding: 1rem;

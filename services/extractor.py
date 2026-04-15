@@ -28,24 +28,168 @@ CRITICAL INSTRUCTIONS:
    - معلومات محولة لغاية (data_valid_until) found near the bottom.
    - أمانة السجل (registry_office) found at the bottom right.
    - عدد العقارات: (declared_property_count) located right under the properties table.
-7. The properties table has 8 columns in order from RIGHT to LEFT as they appear on the page:
+7. If the property owner is a company, religious entity, or organization (e.g., شركة, وقف, مطرانية, جمعية) rather than a natural person, extract its full name into the `first_name` field and leave `father_name`, `mother_name`, `family_name`, etc. as null.
+8. The properties table has 8 columns in order from RIGHT to LEFT as they appear on the page:
    col1(rightmost)=اسم الفريق, col2=رقم العقار, col3=القسم, col4=البلوك,        
    col5=المنطقة العقارية, col6=القضاء, col7=عدد الأسهم, col8(leftmost)=نوع الملكية
    Map these to JSON keys: party_name, property_number, section, block, real_estate_district, qaza, num_shares, ownership_type
-8. Return ONLY valid JSON matching the schema. No markdown, no explanation."""  
+9. Return ONLY valid JSON matching the schema. No markdown, no explanation."""  
 
 USER_PROMPT = (
     "Extract all data from this Lebanese real estate property card. "
     "Return a single JSON object with these keys: "
     "request_number, request_date, applicant_name_raw, request_purpose, data_valid_until, "
     "registry_office, page_info, search_scope, owns_properties, declared_property_count, "
-    "person (object with: first_name, father_name, mother_name, family_name, "  
+    "person (object with: first_name (or company/entity name), father_name, mother_name, family_name, "  
     "family_origin, nationality, birth_date, registry_number, registry_place), "
     "properties (array of objects with: party_name, property_number, section, block, "
     "real_estate_district, qaza, num_shares, ownership_type), "
     "extraction_notes. "
     "Use null for missing fields. Include every property row from the table (or empty array if none)."   
 )
+
+CORRELATION_SYSTEM_PROMPT = """You are verifying whether two scanned Lebanese real estate document pages belong to the same multi-page request and the same person.
+
+Rules:
+1. Compare both page images and the extracted metadata together.
+2. Strong signals: matching request number, matching search scope, matching page numbering in the same sequence, matching applicant/person names, matching footer/header identifiers, and obvious continuation of the same document layout.
+3. Weak OCR differences are common in Arabic letters such as س and ن, ب and ت, or Arabic-Indic digits. Do not reject a match solely because of one likely OCR confusion.
+4. Reject when there are clear contradictions in request number, search scope, person identity, or unrelated page numbering.
+5. Return JSON only.
+"""
+
+
+def _get_ai_verification_provider(preferred_provider: str = "") -> str:
+    """Return a provider capable of vision reasoning for verification."""
+    providers = [p["id"] for p in get_available_providers() if p["id"] in {"claude", "gemini"}]
+    if preferred_provider in providers:
+        return preferred_provider
+    if DEFAULT_PROVIDER in providers:
+        return DEFAULT_PROVIDER
+    if providers:
+        return providers[0]
+    raise ValueError("No AI verification provider configured")
+
+
+def _build_correlation_user_prompt(current_context: dict, candidate_context: dict) -> str:
+    return (
+        "Determine whether PAGE_A and PAGE_B belong to the same multi-page request/document for the same person. "
+        "Treat minor OCR mistakes as possible noise. Return one JSON object with keys: "
+        "same_document (boolean), confidence ('high'|'medium'|'low'), verdict_ar (short Arabic sentence), "
+        "reasons_ar (array of short Arabic bullet strings), mismatch_flags (array of short Arabic strings), "
+        "recommended_action ('auto-link'|'manual-review').\n\n"
+        f"PAGE_A_CONTEXT={json.dumps(current_context, ensure_ascii=False)}\n"
+        f"PAGE_B_CONTEXT={json.dumps(candidate_context, ensure_ascii=False)}"
+    )
+
+
+async def verify_page_correlation(
+    current_image_path: str,
+    candidate_image_path: str,
+    current_context: dict,
+    candidate_context: dict,
+    provider: str = "",
+) -> dict:
+    """Ask a vision model if two pages belong to the same multi-page request."""
+    provider = _get_ai_verification_provider(provider)
+
+    if provider == "claude":
+        import anthropic
+
+        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        current_full_path = _resolve_path(current_image_path)
+        candidate_full_path = _resolve_path(candidate_image_path)
+        current_img_data, current_media_type = _encode_image(current_full_path)
+        candidate_img_data, candidate_media_type = _encode_image(candidate_full_path)
+
+        message = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1200,
+            system=[{"type": "text", "text": CORRELATION_SYSTEM_PROMPT}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _build_correlation_user_prompt(current_context, candidate_context)},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": current_media_type,
+                                "data": current_img_data,
+                            },
+                        },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": candidate_media_type,
+                                "data": candidate_img_data,
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        raw_text = _strip_code_fences(message.content[0].text)
+        result = json.loads(raw_text)
+    elif provider == "gemini":
+        import asyncio
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        current_full_path = _resolve_path(current_image_path)
+        candidate_full_path = _resolve_path(candidate_image_path)
+
+        with open(current_full_path, "rb") as f:
+            current_bytes = f.read()
+        with open(candidate_full_path, "rb") as f:
+            candidate_bytes = f.read()
+
+        mime_map = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+        }
+        current_mime = mime_map.get(Path(current_full_path).suffix.lower(), "image/jpeg")
+        candidate_mime = mime_map.get(Path(candidate_full_path).suffix.lower(), "image/jpeg")
+
+        def _call():
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[
+                    types.Content(
+                        parts=[
+                            types.Part(text=CORRELATION_SYSTEM_PROMPT + "\n\n" + _build_correlation_user_prompt(current_context, candidate_context)),
+                            types.Part(inline_data=types.Blob(mime_type=current_mime, data=current_bytes)),
+                            types.Part(inline_data=types.Blob(mime_type=candidate_mime, data=candidate_bytes)),
+                        ]
+                    )
+                ],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=1600,
+                ),
+            )
+            return response.text
+
+        raw_text = await asyncio.get_event_loop().run_in_executor(None, _call)
+        raw_text = _strip_code_fences(raw_text)
+        result = json.loads(raw_text)
+    else:
+        raise ValueError(f"Provider {provider} does not support AI correlation verification")
+
+    return {
+        "provider": provider,
+        "same_document": bool(result.get("same_document")),
+        "confidence": result.get("confidence") or "medium",
+        "verdict_ar": result.get("verdict_ar") or "تعذر توليد خلاصة واضحة.",
+        "reasons_ar": result.get("reasons_ar") or [],
+        "mismatch_flags": result.get("mismatch_flags") or [],
+        "recommended_action": result.get("recommended_action") or "manual-review",
+    }
 
 def _resolve_path(image_path: str) -> str:
     if Path(image_path).is_absolute():
