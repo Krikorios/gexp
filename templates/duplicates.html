@@ -88,9 +88,9 @@
     <p class="subtitle">قارن كل وثيقة مكررة مع نسختها الأصلية واحذف ما تريد.</p>
   </div>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-    <button class="btn btn-secondary" onclick="scanDuplicates(this)">فحص التكرارات الآن</button>
+    <button class="btn btn-secondary" data-action="scan">فحص التكرارات الآن</button>
     {% if total_duplicates %}
-    <button class="btn btn-danger" onclick="deleteAllDuplicates(this)">حذف جميع المكررات ({{ total_duplicates }})</button>
+    <button class="btn btn-danger" data-action="delete-all">حذف جميع المكررات ({{ total_duplicates }})</button>
     {% endif %}
   </div>
 </div>
@@ -98,7 +98,7 @@
 {% if not groups %}
 <div class="no-results">
   <p>لا توجد وثائق مكررة حالياً.</p>
-  <p><button class="btn btn-primary" onclick="scanDuplicates(this)">فحص قاعدة البيانات عن التكرارات</button></p>
+  <p><button class="btn btn-primary" data-action="scan">فحص قاعدة البيانات عن التكرارات</button></p>
 </div>
 {% else %}
 
@@ -115,7 +115,7 @@
        class="dup-card-img"
        alt="وثيقة {{ d.id }}"
        loading="lazy" decoding="async"
-       onclick="openLightbox(this)">
+       data-action="lightbox">
   <div class="dup-meta">
     <div><strong>الشخص:</strong>
       {% if d.person_id %}
@@ -131,9 +131,9 @@
   <div class="dup-card-actions">
     <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">فتح</a>
     {% if role == 'duplicate' %}
-      <button class="btn btn-sm" onclick="unflagDuplicate({{ d.id }}, this)">ليست مكررة</button>
+      <button class="btn btn-sm" data-action="unflag" data-id="{{ d.id }}">ليست مكررة</button>
     {% endif %}
-    <button class="btn btn-sm btn-danger" onclick="deleteDoc({{ d.id }}, this)">حذف</button>
+    <button class="btn btn-sm btn-danger" data-action="delete" data-id="{{ d.id }}">حذف</button>
   </div>
 </div>
 {% endmacro %}
@@ -155,8 +155,8 @@
 </div>
 {% endfor %}
 
-<div class="dup-lightbox" id="lightbox" onclick="closeLightbox()">
-  <button class="dup-lightbox-close" aria-label="إغلاق">×</button>
+<div class="dup-lightbox" id="lightbox" data-action="close-lightbox">
+  <button class="dup-lightbox-close" aria-label="إغلاق" data-action="close-lightbox">×</button>
   <img id="lightbox-img" src="" alt="">
 </div>
 
@@ -165,94 +165,126 @@
 
 {% block scripts %}
 <script>
-function openLightbox(imgEl) {
-  const full = imgEl.dataset.full || imgEl.src;
-  document.getElementById('lightbox-img').src = full;
-  document.getElementById('lightbox').classList.add('open');
-}
-function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('open');
-  document.getElementById('lightbox-img').src = '';
-}
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+(function () {
+  console.log('[duplicates] script loaded');
 
-async function scanDuplicates(btn) {
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = 'جارٍ الفحص...';
-  const res = await fetch('/documents/scan-duplicates', { method: 'POST' });
-  if (res.ok) {
-    const data = await res.json();
-    alert(`اكتمل الفحص:\n- تم احتساب hash لـ ${data.hashed} وثيقة\n- تكرارات (نفس الصورة): ${data.flagged_by_hash}\n- تكرارات (نفس رقم الطلب): ${data.flagged_by_request}\n- الإجمالي المكرر: ${data.total_duplicates}`);
-    location.reload();
-  } else {
-    alert('فشل الفحص.');
+  function openLightbox(imgEl) {
+    const full = imgEl.dataset.full || imgEl.src;
+    document.getElementById('lightbox-img').src = full;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    if (lb) lb.classList.remove('open');
+    const img = document.getElementById('lightbox-img');
+    if (img) img.src = '';
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
+  async function scanDuplicates(btn) {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'جارٍ الفحص...';
+    try {
+      const res = await fetch('/documents/scan-duplicates', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`اكتمل الفحص:\n- تم احتساب hash لـ ${data.hashed} وثيقة\n- تكرارات (نفس الصورة): ${data.flagged_by_hash}\n- تكرارات (نفس رقم الطلب): ${data.flagged_by_request}\n- الإجمالي المكرر: ${data.total_duplicates}`);
+        location.reload();
+        return;
+      }
+      alert(`فشل الفحص: HTTP ${res.status}`);
+    } catch (e) {
+      alert(`خطأ في الشبكة: ${e.message}`);
+    }
     btn.disabled = false;
     btn.textContent = original;
   }
-}
 
-async function deleteDoc(docId, btn) {
-  if (!window.confirm('حذف هذه الوثيقة نهائياً؟')) return;
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '...';
-  try {
-    const res = await fetch(`/documents/${docId}`, {
-      method: 'DELETE',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (res.ok) {
-      // Reload so keeper-promotion (if the keeper was deleted) is reflected.
-      location.reload();
-      return;
+  async function deleteDoc(docId, btn) {
+    console.log('[duplicates] deleteDoc', docId);
+    if (!window.confirm('حذف هذه الوثيقة نهائياً؟')) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const res = await fetch(`/documents/${docId}`, {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (res.ok) { location.reload(); return; }
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j.error) msg += ` — ${j.error}`; } catch (_) {}
+      alert(`فشل الحذف: ${msg}`);
+    } catch (e) {
+      alert(`خطأ في الشبكة: ${e.message}`);
     }
-    let msg = `HTTP ${res.status}`;
-    try { const j = await res.json(); if (j.error) msg += ` — ${j.error}`; } catch (_) {}
-    alert(`فشل الحذف: ${msg}`);
-  } catch (e) {
-    alert(`خطأ في الشبكة: ${e.message}`);
-  }
-  btn.disabled = false;
-  btn.textContent = original;
-}
-
-async function unflagDuplicate(docId, btn) {
-  const original = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '...';
-  try {
-    const res = await fetch(`/documents/${docId}/unflag-duplicate`, {
-      method: 'POST',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (res.ok) {
-      document.getElementById(`card-${docId}`)?.remove();
-      return;
-    }
-    let msg = `HTTP ${res.status}`;
-    try { const j = await res.json(); if (j.error) msg += ` — ${j.error}`; } catch (_) {}
-    alert(`فشل التحديث: ${msg}`);
-  } catch (e) {
-    alert(`خطأ في الشبكة: ${e.message}`);
-  }
-  btn.disabled = false;
-  btn.textContent = original;
-}
-
-async function deleteAllDuplicates(btn) {
-  if (!confirm('حذف جميع الوثائق المكررة نهائياً؟ (سيتم الاحتفاظ بالنسخة الأصلية)')) return;
-  btn.disabled = true;
-  btn.textContent = 'جارٍ الحذف...';
-  const res = await fetch('/documents/delete-duplicates', { method: 'POST' });
-  if (res.ok) {
-    const data = await res.json();
-    alert(`تم حذف ${data.deleted} وثيقة مكررة.`);
-    location.reload();
-  } else {
-    alert('فشل الحذف.');
     btn.disabled = false;
+    btn.textContent = original;
   }
-}
+
+  async function unflagDuplicate(docId, btn) {
+    console.log('[duplicates] unflagDuplicate', docId);
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const res = await fetch(`/documents/${docId}/unflag-duplicate`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (res.ok) {
+        const card = document.getElementById(`card-${docId}`);
+        if (card) card.remove();
+        return;
+      }
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); if (j.error) msg += ` — ${j.error}`; } catch (_) {}
+      alert(`فشل التحديث: ${msg}`);
+    } catch (e) {
+      alert(`خطأ في الشبكة: ${e.message}`);
+    }
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+
+  async function deleteAllDuplicates(btn) {
+    if (!window.confirm('حذف جميع الوثائق المكررة نهائياً؟ (سيتم الاحتفاظ بالنسخة الأصلية)')) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'جارٍ الحذف...';
+    try {
+      const res = await fetch('/documents/delete-duplicates', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`تم حذف ${data.deleted} وثيقة مكررة.`);
+        location.reload();
+        return;
+      }
+      alert(`فشل الحذف: HTTP ${res.status}`);
+    } catch (e) {
+      alert(`خطأ في الشبكة: ${e.message}`);
+    }
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+
+  // Single delegated click handler — immune to macro scope / inline-handler issues.
+  document.addEventListener('click', function (ev) {
+    const target = ev.target.closest('[data-action]');
+    if (!target) return;
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+    console.log('[duplicates] click', action, id);
+    switch (action) {
+      case 'lightbox':       openLightbox(target); break;
+      case 'close-lightbox': closeLightbox(); break;
+      case 'scan':           ev.preventDefault(); scanDuplicates(target); break;
+      case 'delete':         ev.preventDefault(); deleteDoc(parseInt(id, 10), target); break;
+      case 'unflag':         ev.preventDefault(); unflagDuplicate(parseInt(id, 10), target); break;
+      case 'delete-all':     ev.preventDefault(); deleteAllDuplicates(target); break;
+    }
+  });
+})();
 </script>
 {% endblock %}
