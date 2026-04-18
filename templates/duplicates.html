@@ -77,6 +77,15 @@
     background: #fff; border: none; border-radius: 50%;
     width: 40px; height: 40px; font-size: 1.25rem; cursor: pointer;
   }
+  .btn-confirming {
+    background: #dc2626 !important;
+    color: #fff !important;
+    animation: dup-pulse .8s ease-in-out infinite;
+  }
+  @keyframes dup-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.45); }
+    50%      { box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+  }
 </style>
 {% endblock %}
 
@@ -203,8 +212,24 @@
 
   async function deleteDoc(docId, btn) {
     console.log('[duplicates] deleteDoc', docId);
-    if (!window.confirm('حذف هذه الوثيقة نهائياً؟')) return;
-    const original = btn.textContent;
+    // Two-click confirm: first click turns button into "تأكيد الحذف"; second click executes.
+    if (btn.dataset.confirming !== '1') {
+      const original = btn.textContent;
+      btn.dataset.confirming = '1';
+      btn.dataset.original = original;
+      btn.textContent = 'اضغط للتأكيد';
+      btn.classList.add('btn-confirming');
+      setTimeout(() => {
+        if (btn.dataset.confirming === '1') {
+          btn.dataset.confirming = '';
+          btn.textContent = btn.dataset.original || original;
+          btn.classList.remove('btn-confirming');
+        }
+      }, 4000);
+      return;
+    }
+    btn.dataset.confirming = '';
+    const original = btn.dataset.original || btn.textContent;
     btn.disabled = true;
     btn.textContent = '...';
     try {
@@ -221,6 +246,7 @@
     }
     btn.disabled = false;
     btn.textContent = original;
+    btn.classList.remove('btn-confirming');
   }
 
   async function unflagDuplicate(docId, btn) {
@@ -249,8 +275,22 @@
   }
 
   async function deleteAllDuplicates(btn) {
-    if (!window.confirm('حذف جميع الوثائق المكررة نهائياً؟ (سيتم الاحتفاظ بالنسخة الأصلية)')) return;
-    const original = btn.textContent;
+    if (btn.dataset.confirming !== '1') {
+      btn.dataset.confirming = '1';
+      btn.dataset.original = btn.textContent;
+      btn.textContent = 'اضغط للتأكيد — حذف الجميع';
+      btn.classList.add('btn-confirming');
+      setTimeout(() => {
+        if (btn.dataset.confirming === '1') {
+          btn.dataset.confirming = '';
+          btn.textContent = btn.dataset.original;
+          btn.classList.remove('btn-confirming');
+        }
+      }, 4000);
+      return;
+    }
+    btn.dataset.confirming = '';
+    const original = btn.dataset.original || btn.textContent;
     btn.disabled = true;
     btn.textContent = 'جارٍ الحذف...';
     try {
@@ -267,6 +307,7 @@
     }
     btn.disabled = false;
     btn.textContent = original;
+    btn.classList.remove('btn-confirming');
   }
 
   // Single delegated click handler — immune to macro scope / inline-handler issues.
