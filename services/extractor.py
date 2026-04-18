@@ -131,8 +131,7 @@ async def verify_page_correlation(
                 }
             ],
         )
-        raw_text = _strip_code_fences(message.content[0].text)
-        result = json.loads(raw_text)
+        result = _parse_json_lenient(message.content[0].text)
     elif provider == "gemini":
         import asyncio
         from google import genai
@@ -176,8 +175,7 @@ async def verify_page_correlation(
             return response.text
 
         raw_text = await asyncio.get_event_loop().run_in_executor(None, _call)
-        raw_text = _strip_code_fences(raw_text)
-        result = json.loads(raw_text)
+        result = _parse_json_lenient(raw_text)
     else:
         raise ValueError(f"Provider {provider} does not support AI correlation verification")
 
@@ -221,6 +219,36 @@ def _strip_code_fences(text: str) -> str:
     return text.strip()
 
 
+def _parse_json_lenient(text: str) -> dict:
+    """Parse JSON even if the model added prose, trailing commas, or truncation."""
+    text = _strip_code_fences(text or "")
+    if not text:
+        raise ValueError("Empty response from model")
+
+    # Fast path
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Extract the first {...} block (greedy to last })
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        candidate = text[start:end + 1]
+        try:
+            return json.loads(candidate)
+        except Exception:
+            # Remove trailing commas before } or ]
+            cleaned = re.sub(r",(\s*[}\]])", r"\1", candidate)
+            try:
+                return json.loads(cleaned)
+            except Exception:
+                pass
+
+    raise ValueError(f"Could not parse model response as JSON: {text[:200]}")
+
+
 def get_available_providers() -> list[dict]:
     """Return list of all available providers (EasyOCR is always available)."""
     providers = [
@@ -248,41 +276,55 @@ def get_default_provider() -> str:
 
 async def _extract_with_claude(image_path: str) -> dict:
     import anthropic
+    import asyncio
 
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     full_path = _resolve_path(image_path)
     img_data, media_type = _encode_image(full_path)
 
-    message = await client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": [
+    last_error = None
+    for attempt in range(3):
+        try:
+            message = await client.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=8192,
+                system=[
                     {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": img_data,
-                        },
-                    },
-                    {"type": "text", "text": USER_PROMPT},
+                        "type": "text",
+                        "text": SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }
                 ],
-            }
-        ],
-    )
-
-    raw_text = _strip_code_fences(message.content[0].text)
-    return json.loads(raw_text)
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": img_data,
+                                },
+                            },
+                            {"type": "text", "text": USER_PROMPT},
+                        ],
+                    }
+                ],
+            )
+            return _parse_json_lenient(message.content[0].text)
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            # Transient: overload/rate-limit/network — back off and retry
+            if any(code in err_str for code in ("529", "503", "502", "500", "overload", "Overload", "timeout", "Timeout")):
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            if "429" in err_str and attempt < 2:
+                await asyncio.sleep(5 * (attempt + 1))
+                continue
+            raise
+    raise last_error
 
 
 # ─── Gemini extraction ───────────────────────────────────────────
@@ -320,24 +362,36 @@ async def _extract_with_gemini(image_path: str) -> dict:
                 max_output_tokens=8192,
             ),
         )
-        return response.text
+        text = response.text
+        if not text:
+            try:
+                parts = []
+                for cand in (response.candidates or []):
+                    for part in (cand.content.parts or []):
+                        if getattr(part, "text", None):
+                            parts.append(part.text)
+                text = "".join(parts)
+            except Exception:
+                pass
+        if not text:
+            raise ValueError("Gemini returned empty response")
+        return text
 
     last_error = None
     for model_name in models_to_try:
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 raw_text = await asyncio.get_event_loop().run_in_executor(None, lambda m=model_name: _call(m))
-                raw_text = _strip_code_fences(raw_text)
-                return json.loads(raw_text)
+                return _parse_json_lenient(raw_text)
             except Exception as e:
                 last_error = e
                 err_str = str(e)
-                # On quota exhaustion, skip to next model immediately (don't waste retries)
+                # Quota exhaustion — skip to next model immediately
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     break
-                # On temporary overload, wait and retry same model
-                if "503" in err_str or "UNAVAILABLE" in err_str:
-                    await asyncio.sleep(3 * (attempt + 1))
+                # Transient errors — back off and retry same model
+                if any(code in err_str for code in ("503", "502", "500", "UNAVAILABLE", "DEADLINE", "timeout", "Timeout", "empty response", "Could not parse")):
+                    await asyncio.sleep(2 * (attempt + 1))
                     continue
                 raise
 

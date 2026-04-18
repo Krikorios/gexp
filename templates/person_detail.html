@@ -101,7 +101,7 @@
   <div class="doc-thumbnails">
     {% for d in documents %}
     <a href="/review/{{ d.id }}" class="doc-thumb">
-      <img src="/uploads/{{ d.image_path }}" alt="وثيقة">
+      <img src="/thumbs/{{ d.image_path }}?size=480" alt="وثيقة" loading="lazy" decoding="async">
       <div class="doc-thumb-info">
         {% if d.request_number %}طلب {{ d.request_number }}{% endif %}
         {% if d.request_date %}<br>{{ d.request_date }}{% endif %}

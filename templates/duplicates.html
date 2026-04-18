@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}الوثائق المكررة — سجل العقارات{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <span class="page-kicker">مراجعة التكرارات</span>
+    <h1>الوثائق المكررة</h1>
+    <p class="subtitle">وثائق تمّ رصدها كتكرار لوثيقة موجودة مسبقاً. يمكن حذفها بأمان.</p>
+  </div>
+  <div style="display:flex;gap:.5rem">
+    <button class="btn btn-secondary" onclick="scanDuplicates(this)">فحص التكرارات الآن</button>
+    {% if documents %}
+    <button class="btn btn-danger" onclick="deleteAllDuplicates(this)">حذف جميع التكرارات ({{ documents|length }})</button>
+    {% endif %}
+  </div>
+</div>
+
+{% if not documents %}
+<div class="no-results">
+  <p>لا توجد وثائق مكررة حالياً.</p>
+  <p><button class="btn btn-primary" onclick="scanDuplicates(this)">فحص قاعدة البيانات عن التكرارات</button></p>
+</div>
+{% else %}
+<div class="table-wrapper">
+  <table class="results-table responsive-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>الصورة</th>
+        <th>الشخص</th>
+        <th>رقم الطلب</th>
+        <th>مكرر للوثيقة</th>
+        <th>الحالة</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in documents %}
+      <tr id="row-{{ d.id }}">
+        <td data-label="#">{{ d.id }}</td>
+        <td data-label="الصورة">
+          <a href="/review/{{ d.id }}"><img src="/thumbs/{{ d.image_path }}" class="doc-thumb-mini" alt="" loading="lazy" decoding="async" width="80" height="80"></a>
+        </td>
+        <td data-label="الشخص">
+          {% if d.person_id %}
+          <a href="/persons/{{ d.person_id }}">{{ d.first_name or '' }} {{ d.family_name or '' }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td data-label="رقم الطلب">{{ d.request_number or '—' }}</td>
+        <td data-label="مكرر للوثيقة">
+          <a href="/review/{{ d.duplicate_of }}">#{{ d.duplicate_of }}</a>
+          {% if d.orig_created_at %}<br><small>{{ d.orig_created_at[:10] }}</small>{% endif %}
+        </td>
+        <td data-label="الحالة"><span class="status-badge status-{{ d.status }}">{{ d.status }}</span></td>
+        <td data-label="الإجراءات" class="doc-actions">
+          <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">عرض</a>
+          <button class="btn btn-sm btn-danger" onclick="deleteDoc({{ d.id }}, this)">حذف</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function scanDuplicates(btn) {
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'جارٍ الفحص...';
+  const res = await fetch('/documents/scan-duplicates', { method: 'POST' });
+  if (res.ok) {
+    const data = await res.json();
+    alert(`اكتمل الفحص:\n- تم احتساب hash لـ ${data.hashed} وثيقة\n- تكرارات (نفس الصورة): ${data.flagged_by_hash}\n- تكرارات (نفس رقم الطلب): ${data.flagged_by_request}\n- الإجمالي المكرر: ${data.total_duplicates}`);
+    location.reload();
+  } else {
+    alert('فشل الفحص.');
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+async function deleteDoc(docId, btn) {
+  if (!confirm('حذف هذه الوثيقة المكررة؟')) return;
+  btn.disabled = true;
+  const res = await fetch(`/documents/${docId}`, { method: 'DELETE' });
+  if (res.ok) {
+    document.getElementById(`row-${docId}`).remove();
+  } else {
+    alert('فشل الحذف.');
+    btn.disabled = false;
+  }
+}
+
+async function deleteAllDuplicates(btn) {
+  if (!confirm('حذف جميع الوثائق المكررة نهائياً؟ (سيتم الاحتفاظ بالنسخة الأصلية)')) return;
+  btn.disabled = true;
+  btn.textContent = 'جارٍ الحذف...';
+  const res = await fetch('/documents/delete-duplicates', { method: 'POST' });
+  if (res.ok) {
+    const data = await res.json();
+    alert(`تم حذف ${data.deleted} وثيقة مكررة.`);
+    location.reload();
+  } else {
+    alert('فشل الحذف.');
+    btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

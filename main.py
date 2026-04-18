@@ -3,10 +3,26 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from config import UPLOAD_DIR, ENVIRONMENT
 from database.schema import create_tables
 from routers import documents, review, search, upload, auth
+
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles that sets a long Cache-Control header so browsers
+    don't re-download the same image on every refresh."""
+
+    def __init__(self, *args, max_age: int = 86400, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._max_age = max_age
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = f"public, max-age={self._max_age}"
+        return response
 
 # Disable docs/openapi in production
 if ENVIRONMENT == "production":
@@ -39,8 +55,8 @@ async def startup():
     # A script should be used for initial setup.
 
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", CachedStaticFiles(directory=UPLOAD_DIR, max_age=604800), name="uploads")
+app.mount("/static", CachedStaticFiles(directory="static", max_age=86400), name="static")
 
 app.include_router(upload.router)
 app.include_router(review.router)

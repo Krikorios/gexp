@@ -16,10 +16,15 @@ def _migrate(conn):
         ("registry_office", "TEXT"),
         ("owns_properties", "BOOLEAN"),
         ("declared_property_count", "INTEGER"),
+        ("image_hash", "TEXT"),
+        ("duplicate_of", "INTEGER"),
     ]
     for col, col_type in migrations:
         if col not in existing:
             conn.execute(f"ALTER TABLE documents ADD COLUMN {col} {col_type}")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_image_hash ON documents(image_hash)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_request_number ON documents(request_number)")
 
     cursor = conn.execute("PRAGMA table_info(properties)")
     existing_prop = {row[1] for row in cursor.fetchall()}

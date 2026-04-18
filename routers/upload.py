@@ -1,11 +1,12 @@
 import asyncio
+import hashlib
 import json
 import uuid
 from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import UPLOAD_DIR
@@ -19,6 +20,30 @@ templates = Jinja2Templates(directory="templates")
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_PDF_EXTS = {".pdf"}
 ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTS | ALLOWED_PDF_EXTS
+
+
+def _hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _hash_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _find_duplicate(conn, image_hash: str) -> dict | None:
+    """Return an existing non-staged document sharing the same image hash."""
+    row = conn.execute(
+        """SELECT id, status, image_path, person_id, request_number
+           FROM documents
+           WHERE image_hash=? AND status != 'staged'
+           ORDER BY id LIMIT 1""",
+        (image_hash,),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def _save_image(file_bytes: bytes, original_name: str) -> str:
@@ -90,6 +115,26 @@ async def _extract_and_save(doc_id: int, image_path: str, provider: str = ""):
                     ),
                 )
 
+            # Flag logical duplicates: same request_number + search_scope + page_number
+            req_num = (data.get("request_number") or "").strip()
+            scope = (data.get("search_scope") or "").strip()
+            page_info = (data.get("page_info") or "").strip()
+            if req_num:
+                existing = conn.execute(
+                    """SELECT id FROM documents
+                       WHERE id != ? AND request_number=?
+                         AND COALESCE(search_scope,'')=?
+                         AND COALESCE(page_info,'')=?
+                         AND status IN ('extracted','confirmed')
+                       ORDER BY id LIMIT 1""",
+                    (doc_id, req_num, scope, page_info),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE documents SET duplicate_of=? WHERE id=?",
+                        (existing["id"], doc_id),
+                    )
+
     except Exception as e:
         with get_db() as conn:
             conn.execute(
@@ -129,6 +174,7 @@ async def upload_files(
         provider = get_default_provider()
 
     doc_ids = []
+    duplicates = []
 
     for upload in files:
         suffix = Path(upload.filename).suffix.lower()
@@ -138,16 +184,32 @@ async def upload_files(
         file_bytes = await upload.read()
 
         if suffix in ALLOWED_PDF_EXTS:
-            # PDF: split into per-page images
+            # PDF: split into per-page images; hash each rendered page
             pages = pdf_to_images(file_bytes, upload.filename)
             for page_info in pages:
+                page_path = Path(UPLOAD_DIR) / page_info["image_path"]
+                page_hash = _hash_file(page_path)
                 with get_db() as conn:
+                    dup = _find_duplicate(conn, page_hash)
+                    if dup:
+                        # Discard the freshly rendered duplicate page
+                        try:
+                            page_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        duplicates.append({
+                            "name": f"{upload.filename} (p{page_info['page_number']})",
+                            "existing_id": dup["id"],
+                            "status": dup["status"],
+                        })
+                        continue
                     cursor = conn.execute(
                         """INSERT INTO documents
-                           (image_path, status, provider, pdf_group_id, page_number)
-                           VALUES (?, 'pending', ?, ?, ?)""",
+                           (image_path, image_hash, status, provider, pdf_group_id, page_number)
+                           VALUES (?, ?, 'pending', ?, ?, ?)""",
                         (
                             page_info["image_path"],
+                            page_hash,
                             provider,
                             page_info["pdf_group_id"],
                             page_info["page_number"],
@@ -156,11 +218,20 @@ async def upload_files(
                     doc_ids.append((cursor.lastrowid, page_info["image_path"]))
         else:
             # Image file
-            rel_path = _save_image(file_bytes, upload.filename)
+            image_hash = _hash_bytes(file_bytes)
             with get_db() as conn:
+                dup = _find_duplicate(conn, image_hash)
+                if dup:
+                    duplicates.append({
+                        "name": upload.filename,
+                        "existing_id": dup["id"],
+                        "status": dup["status"],
+                    })
+                    continue
+                rel_path = _save_image(file_bytes, upload.filename)
                 cursor = conn.execute(
-                    "INSERT INTO documents (image_path, status, provider) VALUES (?, 'pending', ?)",
-                    (rel_path, provider),
+                    "INSERT INTO documents (image_path, image_hash, status, provider) VALUES (?, ?, 'pending', ?)",
+                    (rel_path, image_hash, provider),
                 )
                 doc_ids.append((cursor.lastrowid, rel_path))
 
@@ -168,9 +239,16 @@ async def upload_files(
     for doc_id, rel_path in doc_ids:
         asyncio.create_task(_extract_and_save(doc_id, rel_path, provider))
 
-    if len(doc_ids) == 1:
+    if len(doc_ids) == 1 and not duplicates:
         return RedirectResponse(f"/review/{doc_ids[0][0]}?wait=1", status_code=303)
-    return RedirectResponse("/documents?uploaded=1", status_code=303)
+
+    query = "uploaded=1"
+    if duplicates:
+        query += f"&duplicates={len(duplicates)}"
+        # Route user to the first duplicate so they can see which doc matched
+        if not doc_ids:
+            return RedirectResponse(f"/review/{duplicates[0]['existing_id']}", status_code=303)
+    return RedirectResponse(f"/documents?{query}", status_code=303)
 
 
 # ─── Two-step workflow: stage images, then process ─────────────
@@ -182,6 +260,7 @@ async def stage_file(
 ):
     """Save uploaded images without triggering AI extraction."""
     staged = []
+    duplicates = []
     for upload in files:
         suffix = Path(upload.filename).suffix.lower()
         if suffix not in ALLOWED_EXTENSIONS:
@@ -192,13 +271,28 @@ async def stage_file(
         if suffix in ALLOWED_PDF_EXTS:
             pages = pdf_to_images(file_bytes, upload.filename)
             for page_info in pages:
+                page_path = Path(UPLOAD_DIR) / page_info["image_path"]
+                page_hash = _hash_file(page_path)
                 with get_db() as conn:
+                    dup = _find_duplicate(conn, page_hash)
+                    if dup:
+                        try:
+                            page_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        duplicates.append({
+                            "name": f"{upload.filename} (p{page_info['page_number']})",
+                            "existing_id": dup["id"],
+                            "status": dup["status"],
+                        })
+                        continue
                     cursor = conn.execute(
                         """INSERT INTO documents
-                           (image_path, status, pdf_group_id, page_number)
-                           VALUES (?, 'staged', ?, ?)""",
+                           (image_path, image_hash, status, pdf_group_id, page_number)
+                           VALUES (?, ?, 'staged', ?, ?)""",
                         (
                             page_info["image_path"],
+                            page_hash,
                             page_info["pdf_group_id"],
                             page_info["page_number"],
                         ),
@@ -209,11 +303,20 @@ async def stage_file(
                         "name": f"{upload.filename} (p{page_info['page_number']})",
                     })
         else:
-            rel_path = _save_image(file_bytes, upload.filename)
+            image_hash = _hash_bytes(file_bytes)
             with get_db() as conn:
+                dup = _find_duplicate(conn, image_hash)
+                if dup:
+                    duplicates.append({
+                        "name": upload.filename,
+                        "existing_id": dup["id"],
+                        "status": dup["status"],
+                    })
+                    continue
+                rel_path = _save_image(file_bytes, upload.filename)
                 cursor = conn.execute(
-                    "INSERT INTO documents (image_path, status) VALUES (?, 'staged')",
-                    (rel_path,),
+                    "INSERT INTO documents (image_path, image_hash, status) VALUES (?, ?, 'staged')",
+                    (rel_path, image_hash),
                 )
                 staged.append({
                     "id": cursor.lastrowid,
@@ -221,8 +324,7 @@ async def stage_file(
                     "name": upload.filename,
                 })
 
-    from fastapi.responses import JSONResponse
-    return JSONResponse({"staged": staged})
+    return JSONResponse({"staged": staged, "duplicates": duplicates})
 
 
 @router.post("/upload/process-staged")
@@ -259,7 +361,6 @@ async def process_staged(
 @router.delete("/upload/staged/{doc_id}")
 async def remove_staged(doc_id: int):
     """Remove a single staged document before processing."""
-    from fastapi.responses import JSONResponse
     with get_db() as conn:
         row = conn.execute("SELECT image_path FROM documents WHERE id=? AND status='staged'", (doc_id,)).fetchone()
         if row:
