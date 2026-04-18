@@ -281,7 +281,8 @@ async def scan_duplicates():
         for g in hash_groups:
             result = conn.execute(
                 """UPDATE documents SET duplicate_of=?
-                   WHERE image_hash=? AND id != ? AND status != 'staged'""",
+                   WHERE image_hash=? AND id != ? AND status != 'staged'
+                     AND COALESCE(duplicate_dismissed, 0) = 0""",
                 (g["keeper"], g["image_hash"], g["keeper"]),
             )
             flagged_by_hash += result.rowcount or 0
@@ -307,6 +308,7 @@ async def scan_duplicates():
                      AND COALESCE(TRIM(page_info),'')=?
                      AND id != ?
                      AND duplicate_of IS NULL
+                     AND COALESCE(duplicate_dismissed, 0) = 0
                      AND status IN ('extracted','confirmed')""",
                 (g["keeper"], g["rn"], g["sc"], g["pi"], g["keeper"]),
             )
@@ -395,16 +397,21 @@ async def delete_all_duplicates():
 
 @router.post("/documents/{doc_id}/unflag-duplicate")
 async def unflag_duplicate(doc_id: int):
-    """Mark a flagged-duplicate document as NOT a duplicate (clear duplicate_of)."""
+    """Mark a flagged-duplicate document as NOT a duplicate (clear duplicate_of
+    and remember the decision so future scans don't re-flag it)."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT id FROM documents WHERE id=? AND duplicate_of IS NOT NULL",
+            "SELECT id FROM documents WHERE id=?",
             (doc_id,),
         ).fetchone()
         if not row:
-            return JSONResponse({"error": "not flagged"}, status_code=404)
+            return JSONResponse({"error": "not found"}, status_code=404)
         conn.execute(
-            "UPDATE documents SET duplicate_of=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            """UPDATE documents
+               SET duplicate_of=NULL,
+                   duplicate_dismissed=1,
+                   updated_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
             (doc_id,),
         )
     return JSONResponse({"ok": True})

@@ -35,11 +35,13 @@ def _hash_file(path: Path) -> str:
 
 
 def _find_duplicate(conn, image_hash: str) -> dict | None:
-    """Return an existing non-staged document sharing the same image hash."""
+    """Return an existing non-staged document sharing the same image hash.
+    Skips rows the user has explicitly dismissed as 'not a duplicate'."""
     row = conn.execute(
         """SELECT id, status, image_path, person_id, request_number
            FROM documents
            WHERE image_hash=? AND status != 'staged'
+             AND COALESCE(duplicate_dismissed, 0) = 0
            ORDER BY id LIMIT 1""",
         (image_hash,),
     ).fetchone()
@@ -126,14 +128,21 @@ async def _extract_and_save(doc_id: int, image_path: str, provider: str = ""):
                          AND COALESCE(search_scope,'')=?
                          AND COALESCE(page_info,'')=?
                          AND status IN ('extracted','confirmed')
+                         AND COALESCE(duplicate_dismissed, 0) = 0
                        ORDER BY id LIMIT 1""",
                     (doc_id, req_num, scope, page_info),
                 ).fetchone()
                 if existing:
-                    conn.execute(
-                        "UPDATE documents SET duplicate_of=? WHERE id=?",
-                        (existing["id"], doc_id),
-                    )
+                    # Only auto-flag if THIS document hasn't itself been dismissed.
+                    self_row = conn.execute(
+                        "SELECT COALESCE(duplicate_dismissed, 0) AS d FROM documents WHERE id=?",
+                        (doc_id,),
+                    ).fetchone()
+                    if not (self_row and self_row["d"]):
+                        conn.execute(
+                            "UPDATE documents SET duplicate_of=? WHERE id=?",
+                            (existing["id"], doc_id),
+                        )
 
     except Exception as e:
         with get_db() as conn:

@@ -18,6 +18,7 @@ def _migrate(conn):
         ("declared_property_count", "INTEGER"),
         ("image_hash", "TEXT"),
         ("duplicate_of", "INTEGER"),
+        ("duplicate_dismissed", "INTEGER DEFAULT 0"),
     ]
     for col, col_type in migrations:
         if col not in existing:
