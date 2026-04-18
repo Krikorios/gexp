@@ -1,22 +1,20 @@
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
-from services.auth_service import verify_password, get_user_by_username, create_user, delete_user, get_all_users
+from services.auth_service import (
+    verify_password, get_user_by_username, create_user, delete_user, get_all_users,
+    create_session, get_session, delete_session, SESSION_TTL_SECONDS,
+)
 from services.backup_service import create_backup
-import secrets
 import os
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-# Simple memory store for sessions for this requirement. (In prod we use Redis/Cookie etc., but cookie + session dict is quickest without external deps like itsdangerous if not in requirements)
-sessions = {}
 
 def get_current_user_from_request(request: Request):
     session_id = request.cookies.get("session_id")
-    if session_id and session_id in sessions:
-        return sessions[session_id]
-    return None
+    return get_session(session_id) if session_id else None
 
 def get_current_user(request: Request):
     user = get_current_user_from_request(request)
@@ -37,10 +35,8 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     if not user or not verify_password(user["password_hash"], password):
         return templates.TemplateResponse(request=request, name="login.html", context={"error": "Invalid username or password"})
 
-    
-    session_id = secrets.token_urlsafe(32)
-    sessions[session_id] = dict(user)
-    
+    session_id = create_session(user["id"], user["username"])
+
     from config import ENVIRONMENT
     # secure=True only when accessed via HTTPS (check X-Forwarded-Proto from nginx)
     is_https = ENVIRONMENT == "production" and request.headers.get("x-forwarded-proto") == "https"
@@ -51,7 +47,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         httponly=True,
         secure=is_https,
         samesite="lax",
-        max_age=86400,  # 24 hours
+        max_age=SESSION_TTL_SECONDS,
     )
     return response
 
@@ -59,8 +55,8 @@ async def login_post(request: Request, username: str = Form(...), password: str 
 async def logout(request: Request):
     response = RedirectResponse(url="/auth/login")
     session_id = request.cookies.get("session_id")
-    if session_id in sessions:
-        del sessions[session_id]
+    if session_id:
+        delete_session(session_id)
     response.delete_cookie("session_id")
     return response
 

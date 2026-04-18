@@ -1,72 +1,181 @@
 {% extends "base.html" %}
 {% block title %}الوثائق المكررة — سجل العقارات{% endblock %}
 
+{% block head %}
+<style>
+  .dup-group {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 12px;
+    padding: 1rem 1.25rem 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .dup-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .75rem;
+    padding-bottom: .5rem;
+    border-bottom: 1px dashed var(--border, #e5e7eb);
+  }
+  .dup-group-title { font-weight: 600; font-size: .95rem; color: #475569; }
+  .dup-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+  .dup-card {
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 10px;
+    padding: .75rem;
+    background: #fafafa;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+  }
+  .dup-card.keeper { border-color: #10b981; background: #f0fdf4; }
+  .dup-card.duplicate { border-color: #f59e0b; background: #fffbeb; }
+  .dup-card-label {
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+  }
+  .dup-card.keeper .dup-card-label { color: #047857; }
+  .dup-card.duplicate .dup-card-label { color: #b45309; }
+  .dup-card-img {
+    width: 100%;
+    aspect-ratio: 1 / 1.3;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    cursor: zoom-in;
+  }
+  .dup-meta { font-size: .85rem; line-height: 1.5; color: #334155; }
+  .dup-meta div { overflow: hidden; text-overflow: ellipsis; }
+  .dup-meta strong { color: #0f172a; }
+  .dup-card-actions {
+    display: flex;
+    gap: .35rem;
+    flex-wrap: wrap;
+    margin-top: auto;
+  }
+  .dup-lightbox {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+  }
+  .dup-lightbox.open { display: flex; }
+  .dup-lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; }
+  .dup-lightbox-close {
+    position: absolute; top: 1rem; left: 1rem;
+    background: #fff; border: none; border-radius: 50%;
+    width: 40px; height: 40px; font-size: 1.25rem; cursor: pointer;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div>
     <span class="page-kicker">مراجعة التكرارات</span>
     <h1>الوثائق المكررة</h1>
-    <p class="subtitle">وثائق تمّ رصدها كتكرار لوثيقة موجودة مسبقاً. يمكن حذفها بأمان.</p>
+    <p class="subtitle">قارن كل وثيقة مكررة مع نسختها الأصلية واحذف ما تريد.</p>
   </div>
-  <div style="display:flex;gap:.5rem">
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
     <button class="btn btn-secondary" onclick="scanDuplicates(this)">فحص التكرارات الآن</button>
-    {% if documents %}
-    <button class="btn btn-danger" onclick="deleteAllDuplicates(this)">حذف جميع التكرارات ({{ documents|length }})</button>
+    {% if total_duplicates %}
+    <button class="btn btn-danger" onclick="deleteAllDuplicates(this)">حذف جميع المكررات ({{ total_duplicates }})</button>
     {% endif %}
   </div>
 </div>
 
-{% if not documents %}
+{% if not groups %}
 <div class="no-results">
   <p>لا توجد وثائق مكررة حالياً.</p>
   <p><button class="btn btn-primary" onclick="scanDuplicates(this)">فحص قاعدة البيانات عن التكرارات</button></p>
 </div>
 {% else %}
-<div class="table-wrapper">
-  <table class="results-table responsive-table">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>الصورة</th>
-        <th>الشخص</th>
-        <th>رقم الطلب</th>
-        <th>مكرر للوثيقة</th>
-        <th>الحالة</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for d in documents %}
-      <tr id="row-{{ d.id }}">
-        <td data-label="#">{{ d.id }}</td>
-        <td data-label="الصورة">
-          <a href="/review/{{ d.id }}"><img src="/thumbs/{{ d.image_path }}" class="doc-thumb-mini" alt="" loading="lazy" decoding="async" width="80" height="80"></a>
-        </td>
-        <td data-label="الشخص">
-          {% if d.person_id %}
-          <a href="/persons/{{ d.person_id }}">{{ d.first_name or '' }} {{ d.family_name or '' }}</a>
-          {% else %}—{% endif %}
-        </td>
-        <td data-label="رقم الطلب">{{ d.request_number or '—' }}</td>
-        <td data-label="مكرر للوثيقة">
-          <a href="/review/{{ d.duplicate_of }}">#{{ d.duplicate_of }}</a>
-          {% if d.orig_created_at %}<br><small>{{ d.orig_created_at[:10] }}</small>{% endif %}
-        </td>
-        <td data-label="الحالة"><span class="status-badge status-{{ d.status }}">{{ d.status }}</span></td>
-        <td data-label="الإجراءات" class="doc-actions">
-          <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">عرض</a>
-          <button class="btn btn-sm btn-danger" onclick="deleteDoc({{ d.id }}, this)">حذف</button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+
+{% macro doc_card(d, role) %}
+<div class="dup-card {{ role }}" id="card-{{ d.id }}">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span class="dup-card-label">
+      {% if role == 'keeper' %}★ النسخة الأصلية{% else %}مكرر{% endif %}
+    </span>
+    <span style="font-size:.8rem;color:#64748b">#{{ d.id }}</span>
+  </div>
+  <img src="/thumbs/{{ d.image_path }}?size=480"
+       data-full="/uploads/{{ d.image_path }}"
+       class="dup-card-img"
+       alt="وثيقة {{ d.id }}"
+       loading="lazy" decoding="async"
+       onclick="openLightbox(this)">
+  <div class="dup-meta">
+    <div><strong>الشخص:</strong>
+      {% if d.person_id %}
+        <a href="/persons/{{ d.person_id }}">{{ d.first_name or '' }} {{ d.family_name or '' }}</a>
+      {% else %}—{% endif %}
+    </div>
+    <div><strong>رقم الطلب:</strong> {{ d.request_number or '—' }}</div>
+    {% if d.page_info %}<div><strong>الصفحة:</strong> {{ d.page_info }}</div>{% endif %}
+    {% if d.search_scope %}<div><strong>النطاق:</strong> {{ d.search_scope }}</div>{% endif %}
+    <div><strong>الحالة:</strong> <span class="status-badge status-{{ d.status }}">{{ d.status }}</span></div>
+    {% if d.created_at %}<div><strong>أُنشئت:</strong> <small>{{ d.created_at[:16] }}</small></div>{% endif %}
+  </div>
+  <div class="dup-card-actions">
+    <a href="/review/{{ d.id }}" class="btn btn-sm btn-secondary">فتح</a>
+    {% if role == 'duplicate' %}
+      <button class="btn btn-sm" onclick="unflagDuplicate({{ d.id }}, this)">ليست مكررة</button>
+    {% endif %}
+    <button class="btn btn-sm btn-danger" onclick="deleteDoc({{ d.id }}, this)">حذف</button>
+  </div>
 </div>
+{% endmacro %}
+
+{% for g in groups %}
+<div class="dup-group" id="group-{{ g.keeper.id }}">
+  <div class="dup-group-header">
+    <div class="dup-group-title">
+      مجموعة تكرار — {{ g.duplicates|length + 1 }} نسخ
+      {% if g.keeper.request_number %} · طلب رقم {{ g.keeper.request_number }}{% endif %}
+    </div>
+  </div>
+  <div class="dup-cards">
+    {{ doc_card(g.keeper, 'keeper') }}
+    {% for d in g.duplicates %}
+      {{ doc_card(d, 'duplicate') }}
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+<div class="dup-lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="dup-lightbox-close" aria-label="إغلاق">×</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+function openLightbox(imgEl) {
+  const full = imgEl.dataset.full || imgEl.src;
+  document.getElementById('lightbox-img').src = full;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
 async function scanDuplicates(btn) {
   btn.disabled = true;
   const original = btn.textContent;
@@ -84,13 +193,26 @@ async function scanDuplicates(btn) {
 }
 
 async function deleteDoc(docId, btn) {
-  if (!confirm('حذف هذه الوثيقة المكررة؟')) return;
+  if (!confirm('حذف هذه الوثيقة نهائياً؟')) return;
   btn.disabled = true;
   const res = await fetch(`/documents/${docId}`, { method: 'DELETE' });
   if (res.ok) {
-    document.getElementById(`row-${docId}`).remove();
+    // Reload so keeper-promotion (if the keeper was deleted) is reflected.
+    location.reload();
   } else {
     alert('فشل الحذف.');
+    btn.disabled = false;
+  }
+}
+
+async function unflagDuplicate(docId, btn) {
+  if (!confirm('تأكيد أنها ليست وثيقة مكررة؟')) return;
+  btn.disabled = true;
+  const res = await fetch(`/documents/${docId}/unflag-duplicate`, { method: 'POST' });
+  if (res.ok) {
+    document.getElementById(`card-${docId}`)?.remove();
+  } else {
+    alert('فشل التحديث.');
     btn.disabled = false;
   }
 }

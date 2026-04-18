@@ -130,6 +130,23 @@ async def delete_document(doc_id: int):
         if not doc:
             return JSONResponse({"error": "not found"}, status_code=404)
 
+        # If other documents were flagged as duplicates of this one, detach them
+        # (promote the earliest orphan to be the new keeper so they remain grouped).
+        orphans = conn.execute(
+            "SELECT id FROM documents WHERE duplicate_of=? ORDER BY id",
+            (doc_id,),
+        ).fetchall()
+        if orphans:
+            new_keeper = orphans[0]["id"]
+            conn.execute(
+                "UPDATE documents SET duplicate_of=NULL WHERE id=?",
+                (new_keeper,),
+            )
+            conn.execute(
+                "UPDATE documents SET duplicate_of=? WHERE duplicate_of=? AND id != ?",
+                (new_keeper, doc_id, new_keeper),
+            )
+
         # Delete properties for this document
         conn.execute("DELETE FROM properties WHERE document_id=?", (doc_id,))
 
@@ -310,22 +327,49 @@ async def scan_duplicates():
 
 @router.get("/documents/duplicates")
 async def duplicates_view(request: Request):
-    """List all documents flagged as duplicates alongside their originals."""
+    """Group duplicates with their originals so the user can compare side-by-side."""
     with get_db() as conn:
-        rows = conn.execute(
-            """SELECT d.*, p.first_name, p.family_name,
-                      o.request_number AS orig_request_number,
-                      o.created_at AS orig_created_at
+        # Fetch all docs that have been flagged as duplicates + their keepers
+        dup_rows = conn.execute(
+            """SELECT d.*, p.first_name, p.family_name
                FROM documents d
                LEFT JOIN persons p ON p.id = d.person_id
-               LEFT JOIN documents o ON o.id = d.duplicate_of
                WHERE d.duplicate_of IS NOT NULL
                ORDER BY d.duplicate_of, d.id"""
         ).fetchall()
+
+        keeper_ids = sorted({r["duplicate_of"] for r in dup_rows if r["duplicate_of"]})
+        keepers_by_id = {}
+        if keeper_ids:
+            placeholders = ",".join("?" * len(keeper_ids))
+            keeper_rows = conn.execute(
+                f"""SELECT d.*, p.first_name, p.family_name
+                    FROM documents d
+                    LEFT JOIN persons p ON p.id = d.person_id
+                    WHERE d.id IN ({placeholders})""",
+                keeper_ids,
+            ).fetchall()
+            keepers_by_id = {r["id"]: dict(r) for r in keeper_rows}
+
+    groups = []
+    seen_keepers = []
+    dups_by_keeper: dict[int, list[dict]] = {}
+    for r in dup_rows:
+        k = r["duplicate_of"]
+        dups_by_keeper.setdefault(k, []).append(dict(r))
+        if k not in seen_keepers:
+            seen_keepers.append(k)
+
+    for k in seen_keepers:
+        keeper = keepers_by_id.get(k)
+        if not keeper:
+            continue
+        groups.append({"keeper": keeper, "duplicates": dups_by_keeper.get(k, [])})
+
     return templates.TemplateResponse(
         request,
         "duplicates.html",
-        {"documents": [dict(r) for r in rows]},
+        {"groups": groups, "total_duplicates": len(dup_rows)},
     )
 
 
@@ -347,3 +391,20 @@ async def delete_all_duplicates():
                 pass
             deleted += 1
     return JSONResponse({"ok": True, "deleted": deleted})
+
+
+@router.post("/documents/{doc_id}/unflag-duplicate")
+async def unflag_duplicate(doc_id: int):
+    """Mark a flagged-duplicate document as NOT a duplicate (clear duplicate_of)."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM documents WHERE id=? AND duplicate_of IS NOT NULL",
+            (doc_id,),
+        ).fetchone()
+        if not row:
+            return JSONResponse({"error": "not flagged"}, status_code=404)
+        conn.execute(
+            "UPDATE documents SET duplicate_of=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (doc_id,),
+        )
+    return JSONResponse({"ok": True})

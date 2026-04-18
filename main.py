@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,6 +9,7 @@ from starlette.types import Scope
 from config import UPLOAD_DIR, ENVIRONMENT
 from database.schema import create_tables
 from routers import documents, review, search, upload, auth
+from services.auth_service import get_session, cleanup_expired_sessions
 
 
 class CachedStaticFiles(StaticFiles):
@@ -24,35 +26,38 @@ class CachedStaticFiles(StaticFiles):
             response.headers["Cache-Control"] = f"public, max-age={self._max_age}"
         return response
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+    Path("data").mkdir(exist_ok=True)
+    create_tables()
+    try:
+        cleanup_expired_sessions()
+    except Exception:
+        pass
+    yield
+
+
 # Disable docs/openapi in production
 if ENVIRONMENT == "production":
-    app = FastAPI(title="Lebanese Real Estate Registry", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Lebanese Real Estate Registry", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 else:
-    app = FastAPI(title="Lebanese Real Estate Registry")
+    app = FastAPI(title="Lebanese Real Estate Registry", lifespan=lifespan)
 
 @app.middleware("http")
 async def check_authentication(request: Request, call_next):
     path = request.url.path
     allowed_paths = ["/auth/login", "/static"]
     is_allowed = any(path.startswith(p) for p in allowed_paths)
-    
+
     if not is_allowed:
         session_id = request.cookies.get("session_id")
-        if not session_id or session_id not in auth.sessions:
+        if not session_id or not get_session(session_id):
             return RedirectResponse(url="/auth/login", status_code=303)
-            
+
     response = await call_next(request)
     return response
-
-
-@app.on_event("startup")
-async def startup():
-    Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
-    Path("data").mkdir(exist_ok=True)
-    create_tables()
-    
-    # Do NOT create default admin user automatically in production!
-    # A script should be used for initial setup.
 
 
 app.mount("/uploads", CachedStaticFiles(directory=UPLOAD_DIR, max_age=604800), name="uploads")
