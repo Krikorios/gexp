@@ -193,16 +193,28 @@ async function scanDuplicates(btn) {
 }
 
 async function deleteDoc(docId, btn) {
-  if (!confirm('حذف هذه الوثيقة نهائياً؟')) return;
+  if (!window.confirm('حذف هذه الوثيقة نهائياً؟')) return;
+  const original = btn.textContent;
   btn.disabled = true;
-  const res = await fetch(`/documents/${docId}`, { method: 'DELETE' });
-  if (res.ok) {
-    // Reload so keeper-promotion (if the keeper was deleted) is reflected.
-    location.reload();
-  } else {
-    alert('فشل الحذف.');
-    btn.disabled = false;
+  btn.textContent = '...';
+  try {
+    const res = await fetch(`/documents/${docId}`, {
+      method: 'DELETE',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (res.ok) {
+      // Reload so keeper-promotion (if the keeper was deleted) is reflected.
+      location.reload();
+      return;
+    }
+    let msg = `HTTP ${res.status}`;
+    try { const j = await res.json(); if (j.error) msg += ` — ${j.error}`; } catch (_) {}
+    alert(`فشل الحذف: ${msg}`);
+  } catch (e) {
+    alert(`خطأ في الشبكة: ${e.message}`);
   }
+  btn.disabled = false;
+  btn.textContent = original;
 }
 
 async function unflagDuplicate(docId, btn) {
