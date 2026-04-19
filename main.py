@@ -51,10 +51,13 @@ async def check_authentication(request: Request, call_next):
     allowed_paths = ["/auth/login", "/static"]
     is_allowed = any(path.startswith(p) for p in allowed_paths)
 
+    request.state.user = None
     if not is_allowed:
         session_id = request.cookies.get("session_id")
-        if not session_id or not get_session(session_id):
+        user = get_session(session_id) if session_id else None
+        if not user:
             return RedirectResponse(url="/auth/login", status_code=303)
+        request.state.user = user
 
     response = await call_next(request)
     return response

@@ -5,7 +5,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +20,35 @@ templates = Jinja2Templates(directory="templates")
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_PDF_EXTS = {".pdf"}
 ALLOWED_EXTENSIONS = ALLOWED_IMAGE_EXTS | ALLOWED_PDF_EXTS
+
+MAX_FILE_BYTES = 25 * 1024 * 1024      # 25 MB per file
+MAX_TOTAL_BYTES = 100 * 1024 * 1024    # 100 MB per request
+
+
+def _check_request_size(request: Request) -> None:
+    """Reject oversize uploads early via Content-Length header."""
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > MAX_TOTAL_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"حجم الطلب يتجاوز الحد الأقصى ({MAX_TOTAL_BYTES // (1024*1024)} ميغابايت).",
+        )
+
+
+async def _read_capped(upload: UploadFile, running_total: int) -> bytes:
+    """Read upload bytes, enforcing per-file and cumulative caps."""
+    data = await upload.read()
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"الملف '{upload.filename}' يتجاوز {MAX_FILE_BYTES // (1024*1024)} ميغابايت.",
+        )
+    if running_total + len(data) > MAX_TOTAL_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"إجمالي حجم الرفع يتجاوز {MAX_TOTAL_BYTES // (1024*1024)} ميغابايت.",
+        )
+    return data
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -179,18 +208,21 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     provider: str = Form(""),
 ):
+    _check_request_size(request)
     if not provider:
         provider = get_default_provider()
 
     doc_ids = []
     duplicates = []
+    total_bytes = 0
 
     for upload in files:
         suffix = Path(upload.filename).suffix.lower()
         if suffix not in ALLOWED_EXTENSIONS:
             continue
 
-        file_bytes = await upload.read()
+        file_bytes = await _read_capped(upload, total_bytes)
+        total_bytes += len(file_bytes)
 
         if suffix in ALLOWED_PDF_EXTS:
             # PDF: split into per-page images; hash each rendered page
@@ -268,14 +300,17 @@ async def stage_file(
     files: list[UploadFile] = File(...),
 ):
     """Save uploaded images without triggering AI extraction."""
+    _check_request_size(request)
     staged = []
     duplicates = []
+    total_bytes = 0
     for upload in files:
         suffix = Path(upload.filename).suffix.lower()
         if suffix not in ALLOWED_EXTENSIONS:
             continue
 
-        file_bytes = await upload.read()
+        file_bytes = await _read_capped(upload, total_bytes)
+        total_bytes += len(file_bytes)
 
         if suffix in ALLOWED_PDF_EXTS:
             pages = pdf_to_images(file_bytes, upload.filename)

@@ -3,6 +3,16 @@ from database.connection import get_db
 
 def _migrate(conn):
     """Add columns that may not exist in older databases."""
+    # users.role migration
+    cursor = conn.execute("PRAGMA table_info(users)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    if "role" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        # Promote the first-created user to admin so the app remains usable.
+        first = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        if first:
+            conn.execute("UPDATE users SET role='admin' WHERE id=?", (first[0],))
+
     cursor = conn.execute("PRAGMA table_info(documents)")
     existing = {row[1] for row in cursor.fetchall()}
     migrations = [
@@ -44,8 +54,19 @@ def create_tables():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                ip TEXT,
+                success INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_login_attempts_username ON login_attempts(username, created_at);
+            CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, created_at);
 
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,

@@ -15,6 +15,9 @@
     {% if backup_msg %}
     <div class="success-banner">{{ backup_msg }}</div>
     {% endif %}
+    {% if error %}
+    <div class="error-banner" style="background:#fee2e2;color:#991b1b;padding:.75rem 1rem;border-radius:8px;margin:.75rem 0">{{ error }}</div>
+    {% endif %}
 
     <div class="admin-section">
         <h3>
@@ -37,7 +40,14 @@
             </div>
             <div class="form-group">
                 <label for="password">كلمة المرور</label>
-                <input type="password" id="password" name="password" required>
+                <input type="password" id="password" name="password" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label for="role">الصلاحية</label>
+                <select id="role" name="role">
+                  <option value="user">مستخدم</option>
+                  <option value="admin">مسؤول</option>
+                </select>
             </div>
             <button type="submit" class="btn btn-primary">إضافة</button>
         </form>
@@ -54,6 +64,7 @@
                     <tr>
                         <th>الرقم</th>
                         <th>اسم المستخدم</th>
+                        <th>الصلاحية</th>
                         <th>تاريخ الإنشاء</th>
                         <th></th>
                     </tr>
@@ -62,12 +73,30 @@
                     {% for user in users %}
                     <tr>
                         <td data-label="الرقم">{{ user.id }}</td>
-                        <td data-label="اسم المستخدم">{{ user.username }}</td>
+                        <td data-label="اسم المستخدم">
+                          {{ user.username }}
+                          {% if current_user and user.id == current_user.user_id %}<small style="color:#64748b">(أنت)</small>{% endif %}
+                        </td>
+                        <td data-label="الصلاحية">
+                          <form method="post" action="/auth/users/{{ user.id }}/role" class="inline-form" style="display:flex;gap:.35rem;align-items:center">
+                            <select name="role" {% if current_user and user.id == current_user.user_id %}disabled{% endif %}>
+                              <option value="user" {% if user.role == 'user' %}selected{% endif %}>مستخدم</option>
+                              <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>مسؤول</option>
+                            </select>
+                            {% if not (current_user and user.id == current_user.user_id) %}
+                            <button type="submit" class="btn btn-sm btn-secondary">تغيير</button>
+                            {% endif %}
+                          </form>
+                        </td>
                         <td data-label="تاريخ الإنشاء">{{ user.created_at }}</td>
                         <td data-label="الإجراءات">
+                            {% if current_user and user.id == current_user.user_id %}
+                              <span style="color:#64748b;font-size:.85rem">—</span>
+                            {% else %}
                             <form method="post" action="/auth/users/delete/{{ user.id }}" onsubmit="return confirm('هل أنت متأكد من حذف هذا المستخدم؟');" class="inline-form">
                                 <button type="submit" class="btn btn-sm btn-danger">حذف</button>
                             </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
