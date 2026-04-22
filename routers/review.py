@@ -70,6 +70,16 @@ def _find_page1_candidate(conn, doc: dict) -> tuple[bool, dict | None]:
                        LIMIT 1""",
                     (req_num, doc_scope, doc["id"]),
                 ).fetchone()
+            else:
+                sibling_doc = conn.execute(
+                    """SELECT * FROM documents
+                       WHERE request_number=? AND (search_scope IS NULL OR TRIM(search_scope)='') AND id != ?
+                       ORDER BY CASE WHEN page_number=1 THEN 0 ELSE 1 END,
+                                CASE WHEN person_id IS NOT NULL THEN 0 ELSE 1 END,
+                                id
+                       LIMIT 1""",
+                    (req_num, doc["id"]),
+                ).fetchone()
 
     return is_subsequent_page, dict(sibling_doc) if sibling_doc else None
 
@@ -727,6 +737,11 @@ async def retrigger_extraction(doc_id: int, provider: str = ""):
     use_provider = provider or doc["provider"] or get_default_provider()
 
     with get_db() as conn:
+        old_person_id = conn.execute(
+            "SELECT person_id FROM documents WHERE id=?", (doc_id,)
+        ).fetchone()
+        old_person_id = old_person_id["person_id"] if old_person_id else None
+
         conn.execute(
             """UPDATE documents
                SET status='pending',
@@ -749,6 +764,16 @@ async def retrigger_extraction(doc_id: int, provider: str = ""):
             (use_provider, doc_id),
         )
         conn.execute("DELETE FROM properties WHERE document_id=?", (doc_id,))
+
+        # Clean up orphaned person if this was their only document
+        if old_person_id:
+            remaining = conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE person_id=?",
+                (old_person_id,),
+            ).fetchone()["n"]
+            if remaining == 0:
+                conn.execute("DELETE FROM properties WHERE person_id=?", (old_person_id,))
+                conn.execute("DELETE FROM persons WHERE id=?", (old_person_id,))
 
     from routers.upload import _extract_and_save
     asyncio.create_task(_extract_and_save(doc_id, doc["image_path"], use_provider))
