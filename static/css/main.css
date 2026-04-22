@@ -1475,6 +1475,35 @@ a.stat.active { border-color: rgba(15,118,110,.24); background: var(--primary-so
     width: 44px;
     height: 34px;
   }
+
+  /* Persons grid → flat list on mobile */
+  .persons-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-inline: -.75rem;
+    margin-top: .5rem;
+    border-top: 1px solid rgba(23,37,44,.08);
+    border-bottom: 1px solid rgba(23,37,44,.08);
+    background: #fff;
+  }
+  .person-card {
+    border: none;
+    border-bottom: 1px solid rgba(23,37,44,.06);
+    border-radius: 0;
+    padding: .7rem .9rem;
+    box-shadow: none;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+  }
+  .person-card:last-child { border-bottom: none; }
+  .person-card:hover { transform: none; box-shadow: none; }
+  .person-card::before { display: none; }
+  .person-name { font-size: .95rem; font-weight: 700; margin: 0; }
+  .person-meta { font-size: .78rem; }
+  .person-reg { font-size: .72rem; margin-top: 0; }
 }
 
 /* ============================
