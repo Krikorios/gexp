@@ -1395,142 +1395,85 @@ a.stat.active { border-color: rgba(15,118,110,.24); background: var(--primary-so
 }
 
 /* ============================
-   Responsive tables — compact list cards on mobile/tablet
-   Each row becomes a card with property number prominent on top
-   and other fields laid out 2-per-row for density.
+   Responsive tables — keep desktop table layout on mobile,
+   just shrink padding/fonts and allow horizontal scroll
+   if content still overflows the viewport margins.
    ============================ */
 @media (max-width: 640px) {
+  /* Table wrapper extends to viewport edges for maximum usable width */
+  .table-wrapper,
+  .table-wrapper-spaced {
+    margin-inline: -.75rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .responsive-table {
-    border-collapse: separate;
-    border-spacing: 0;
+    width: 100%;
+    min-width: max-content; /* horizontal scroll kicks in only if needed */
+    border-collapse: collapse;
     background: transparent;
-  }
-  .responsive-table thead { display: none; }
-  .responsive-table tbody,
-  .responsive-table tr,
-  .responsive-table td { display: block; width: 100%; }
-
-  .responsive-table tbody { padding: .25rem .5rem .6rem; }
-
-  .responsive-table tr {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    row-gap: 0;
-    column-gap: .5rem;
-    margin-bottom: .55rem;
-    padding: .5rem .65rem .6rem;
-    border: 1px solid rgba(23,37,44,.08);
-    border-radius: 14px;
-    background: rgba(255,255,255,.96);
-    box-shadow: 0 6px 16px rgba(23,37,44,.06);
-    overflow: hidden;
+    font-size: .78rem;
   }
 
-  .responsive-table td {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: .1rem;
-    padding: .3rem .15rem;
-    text-align: right;
-    border: none;
-    font-size: .85rem;
+  /* Show the header (desktop look) */
+  .responsive-table thead { display: table-header-group; }
+  .responsive-table tbody { display: table-row-group; }
+  .responsive-table tr { display: table-row; }
+  .responsive-table td,
+  .responsive-table th {
+    display: table-cell;
+    padding: .4rem .45rem;
+    font-size: .78rem;
     line-height: 1.3;
-    min-width: 0;
-    word-break: break-word;
-  }
-  .responsive-table td[data-label]::before {
-    display: block;
-    content: attr(data-label);
-    color: var(--text-muted);
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: .01em;
-    margin-bottom: .05rem;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(23,37,44,.06);
   }
 
-  /* Prominent / full-width fields */
-  .responsive-table td[data-label="رقم العقار"] {
-    grid-column: 1 / -1;
-    order: -1;
-    padding-top: .15rem;
-    padding-bottom: .4rem;
-    border-bottom: 1px solid rgba(23,37,44,.08);
-    margin-bottom: .3rem;
+  /* Hide the ::before data-labels (desktop mode shows real headers) */
+  .responsive-table td[data-label]::before {
+    display: none;
+    content: none;
   }
-  .responsive-table td[data-label="رقم العقار"]::before {
-    font-size: .7rem;
+
+  /* Row index column stays compact */
+  .responsive-table td[data-label="#"] {
+    color: var(--text-muted);
+    font-weight: 700;
+    width: 2rem;
+    text-align: center;
   }
-  .responsive-table td[data-label="رقم العقار"] {
-    font-size: 1.15rem;
+
+  /* Property number highlighted, like a badge */
+  .responsive-table td[data-label="رقم العقار"],
+  .responsive-table td.prop-num {
     font-weight: 800;
     color: var(--primary-dark);
   }
 
-  .responsive-table td[data-label="المالك"],
-  .responsive-table td[data-label="اسم الفريق"],
-  .responsive-table td[data-label="المنطقة العقارية"],
-  .responsive-table td[data-label="الإجراءات"] {
-    grid-column: 1 / -1;
+  /* Ownership-alert rows keep their desktop visual flag */
+  .ownership-alert td {
+    background: #fff8f8;
   }
 
-  /* Row index: small corner badge, hide label */
-  .responsive-table td[data-label="#"] {
-    order: -2;
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
-    padding: 0 0 .15rem;
-    font-size: .7rem;
-    color: var(--text-muted);
-    font-weight: 700;
-  }
-  .responsive-table td[data-label="#"]::before {
-    content: '#';
-    margin-inline-end: .25rem;
-    color: var(--text-muted);
-    font-size: .7rem;
-  }
-
-  /* Ownership-alert rows stay visually flagged */
-  .ownership-alert {
-    border-color: #fecaca !important;
-    background: #fff8f8 !important;
-  }
-  .ownership-alert td { background: transparent; }
-
-  /* Actions cell: buttons flow full width */
-  .responsive-table .doc-actions,
-  .responsive-table td[data-label="الإجراءات"] {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: stretch;
-    gap: .4rem;
-    padding-top: .4rem;
-    border-top: 1px dashed rgba(23,37,44,.08);
-    margin-top: .2rem;
-  }
-  .responsive-table td[data-label="الإجراءات"]::before {
-    width: 100%;
-    margin-bottom: .2rem;
+  /* Actions cell: keep buttons inline but smaller */
+  .responsive-table .doc-actions {
+    display: inline-flex;
+    gap: .25rem;
+    flex-wrap: nowrap;
   }
   .responsive-table .doc-actions .btn,
-  .responsive-table td[data-label="الإجراءات"] .btn,
-  .responsive-table td[data-label="الإجراءات"] .inline-form,
-  .responsive-table td[data-label="الإجراءات"] .inline-form .btn {
-    flex: 1 1 calc(50% - .2rem);
-    min-width: 0;
-    font-size: .8rem;
+  .responsive-table td[data-label="الإجراءات"] .btn {
+    padding: .3rem .5rem;
+    font-size: .72rem;
   }
   .responsive-table .doc-thumb-mini {
-    width: 64px;
-    height: 48px;
-  }
-
-  /* Table wrapper padding tweaks */
-  .table-wrapper.table-wrapper-spaced,
-  .table-wrapper {
-    padding: 0;
+    width: 44px;
+    height: 34px;
   }
 }
 
