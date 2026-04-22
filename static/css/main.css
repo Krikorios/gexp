@@ -1285,13 +1285,31 @@ a.stat.active { border-color: rgba(15,118,110,.24); background: var(--primary-so
     font-size: .95rem;
   }
 
-  /* Stats */
-  .stats-bar { gap: .5rem; }
-  .stat { min-width: 75px; padding: .5rem .65rem; }
-  .stat-num { font-size: 1.15rem; }
-  .stats-bar .stat { flex: 1 1 calc(50% - .5rem); }
-
-  /* Quick links — single column */
+  /* Stats → horizontal compact pill strip on mobile */
+  .stats-bar {
+    gap: .4rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-inline: -.75rem;
+    padding: .1rem .75rem .25rem;
+    scrollbar-width: none;
+  }
+  .stats-bar::-webkit-scrollbar { display: none; }
+  .stat {
+    flex: 0 0 auto;
+    min-width: 0;
+    flex-direction: row;
+    align-items: baseline;
+    gap: .35rem;
+    padding: .4rem .7rem;
+    border-radius: 999px;
+    box-shadow: none;
+    white-space: nowrap;
+  }
+  .stat-num { font-size: .95rem; font-weight: 800; }
+  .stat-label { font-size: .72rem; margin-top: 0; }
+  a.stat:hover { transform: none; box-shadow: none; }  /* Quick links — single column */
   .quick-links { grid-template-columns: 1fr; }
 
   /* Upload card */
@@ -1380,7 +1398,7 @@ a.stat.active { border-color: rgba(15,118,110,.24); background: var(--primary-so
   .doc-thumbnails { gap: .5rem; }
   .doc-thumb { width: 100px; }
   .doc-thumb img { height: 70px; }
-  .stats-bar .stat { flex-basis: 100%; }
+  .stats-bar .stat { flex: 0 0 auto; }
 
   .mobile-dock {
     right: .5rem;
